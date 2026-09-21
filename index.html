@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Competition Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <header class="topbar">
+
+      <div>
+        <div class="subtitle">Competition Dashboard</div>
+      </div>
+
+      <nav class="page-nav">
+
+        <button class="nav-button active" data-page="home">
+          HOME
+        </button>
+
+        <button class="nav-button" data-page="team-a">
+          TEAM A
+        </button>
+
+        <button class="nav-button" data-page="team-b">
+          TEAM B
+        </button>
+
+        <button class="nav-button" data-page="team-c">
+          TEAM C
+        </button>
+
+        <button class="nav-button" data-page="team-d">
+          TEAM D
+        </button>
+
+        <button class="nav-button" data-page="finals">
+          FINALS
+        </button>
+
+        <button class="nav-button" data-page="admin">
+          ADMIN
+        </button>
+
+      </nav>
+
+    </header>
+
+
+    <main>
+
+      <!-- HOME -->
+
+      <div id="home-page" class="page active-page">
+
+        <section class="card">
+
+          <div class="section-title">
+            STANDINGS
+          </div>
+
+          <h2>Ladder</h2>
+
+          <div id="ladder"></div>
+
+        </section>
+
+
+        <section class="card">
+
+          <div class="section-title">
+            MATCHES
+          </div>
+
+          <h2>Games</h2>
+
+          <div id="games"></div>
+
+        </section>
+
+
+        <section class="card elo-card">
+
+          <details>
+
+            <summary>
+
+              <div>
+
+                <div class="section-title">
+                  RATINGS
+                </div>
+
+                <div class="elo-title">
+                  Elo calculation
+                </div>
+
+              </div>
+
+              <span class="elo-arrow">›</span>
+
+            </summary>
+
+            <div id="eloContent">
+
+              <div id="eloTable"></div>
+
+            </div>
+
+          </details>
+
+        </section>
+
+      </div>
+
+
+      <!-- TEAM PAGES -->
+
+      <div id="team-a-page" class="page team-page"></div>
+      <div id="team-b-page" class="page team-page"></div>
+      <div id="team-c-page" class="page team-page"></div>
+      <div id="team-d-page" class="page team-page"></div>
+
+
+      <!-- FINALS -->
+
+      <div id="finals-page" class="page"></div>
+
+
+      <!-- ADMIN -->
+
+      <div id="admin-page" class="page"></div>
+
+    </main>
+
+  </div>
+
+  <script src="script.js"></script>
+
+</body>
+</html>
