@@ -26,7 +26,7 @@ const SHEET_URL =
 ========================================================= */
 
 function getGamesPerTeam() {
-  const saved = Number(localStorage.getItem("ultimate_games_per_team"));
+  const saved = Number(localStorage.getItem("ultimate_games_per_team_5team"));
 
   if (
     Number.isInteger(saved) &&
@@ -50,7 +50,7 @@ function setGamesPerTeam(value) {
     return;
   }
 
-  localStorage.setItem("ultimate_games_per_team", number);
+  localStorage.setItem("ultimate_games_per_team_5team", number);
 }
 
 /* ─────────────────────────────────────
