@@ -18,7 +18,7 @@ const FINALS_COUNT = 4;
 const ADMIN_PIN = "298562";
 
 const SHEET_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNDPHaocEHFaoAeVmME_8x_k3ZGSCd5hYkKhh9wIldd1brzVR3FjCordF2AwmY4lzPLml61HCyDPFj/pub?output=csv";
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vT2tLmAB4OB6uWLeBeCSWLMarzK9RjelvVTJRGqsm94yVijiT25leyXnPWhJybPtoyMKUgfBL6tTzFe/pub?output=csv";
 
 
 /* =========================================================
