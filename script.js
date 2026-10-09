@@ -2,7 +2,8 @@ const TEAMS = [
   "Team A",
   "Team B",
   "Team C",
-  "Team D"
+  "Team D",
+  "Team E"
 ];
 
 const START_ELO = 1000;
@@ -10,7 +11,7 @@ const K = 25;
 
 const MIN_GAMES_PER_TEAM = 3;
 const MAX_GAMES_PER_TEAM = 12;
-const DEFAULT_GAMES_PER_TEAM = 6;
+const DEFAULT_GAMES_PER_TEAM = 12;
 
 const FINALS_COUNT = 4;
 
@@ -63,7 +64,8 @@ function getTeamNames() {
     "Team A": "Team A",
     "Team B": "Team B",
     "Team C": "Team C",
-    "Team D": "Team D"
+    "Team D": "Team D",
+    "Team E": "Team E"
   };
 
   const saved = localStorage.getItem("ultimate_team_names");
@@ -109,7 +111,8 @@ function updateTeamNavNames() {
     "team-a": "Team A",
     "team-b": "Team B",
     "team-c": "Team C",
-    "team-d": "Team D"
+    "team-d": "Team D",
+    "team-e": "Team E"
   };
 
   document.querySelectorAll("[data-page]").forEach(button => {
@@ -129,75 +132,65 @@ function getRegularGameCount() {
 ========================================================= */
 
 function generateFixtureTemplate() {
-
   const fixtures = [];
 
-  const cycle = [
-    ["Team A", "Team B"],
-    ["Team C", "Team D"],
-
-    ["Team A", "Team C"],
-    ["Team B", "Team D"],
-
-    ["Team A", "Team D"],
-    ["Team B", "Team C"]
+  // Each round has two games and one team on referee duty.
+  // The bye/referee rotates through the five teams.
+  const rounds = [
+    { referee: "Team E", games: [["Team A", "Team B"], ["Team C", "Team D"]] },
+    { referee: "Team D", games: [["Team A", "Team C"], ["Team B", "Team E"]] },
+    { referee: "Team B", games: [["Team A", "Team D"], ["Team C", "Team E"]] },
+    { referee: "Team C", games: [["Team A", "Team E"], ["Team B", "Team D"]] },
+    { referee: "Team A", games: [["Team B", "Team C"], ["Team D", "Team E"]] }
   ];
 
+  const teamIndex = new Map(TEAMS.map((team, index) => [team, index]));
+  const matchesPerCycle = TEAMS.length * (TEAMS.length - 1) / 2;
+  const regularGameLimit = MAX_GAMES_PER_TEAM * TEAMS.length / 2;
+  const cyclesNeeded = Math.ceil(regularGameLimit / matchesPerCycle);
   let gameId = 1;
 
-  while (
-    fixtures.length <
-    MAX_GAMES_PER_TEAM *
-    TEAMS.length /
-    2
-  ) {
+  for (let cycle = 0; cycle < cyclesNeeded; cycle++) {
+    for (const round of rounds) {
+      for (const [first, second] of round.games) {
+        if (fixtures.length >= regularGameLimit) break;
 
-    for (
-      const matchup of cycle
-    ) {
+        const firstIndex = teamIndex.get(first);
+        const secondIndex = teamIndex.get(second);
+        const offset = (secondIndex - firstIndex + TEAMS.length) % TEAMS.length;
+        let home = offset > 0 && offset <= Math.floor((TEAMS.length - 1) / 2)
+          ? first
+          : second;
+        let away = home === first ? second : first;
 
-      if (
-        fixtures.length >=
-        MAX_GAMES_PER_TEAM *
-        TEAMS.length /
-        2
-      ) {
-        break;
+        // Reverse home/away on every second round-robin cycle.
+        if (cycle % 2 === 1) {
+          [home, away] = [away, home];
+        }
+
+        fixtures.push({
+          id: gameId++,
+          home,
+          away,
+          referee: round.referee,
+          stage: "REGULAR"
+        });
       }
-
-      fixtures.push({
-        id: gameId,
-        home: matchup[0],
-        away: matchup[1],
-        stage: "REGULAR"
-      });
-
-      gameId++;
     }
   }
 
-  for (
-    let i = 0;
-    i < FINALS_COUNT;
-    i++
-  ) {
-
+  for (let i = 0; i < FINALS_COUNT; i++) {
     fixtures.push({
-      id:
-        gameId + i,
+      id: gameId + i,
       home: "",
       away: "",
-      stage:
-        i === FINALS_COUNT - 1
-          ? "GRAND FINAL"
-          : "FINAL"
+      referee: "",
+      stage: i === FINALS_COUNT - 1 ? "GRAND FINAL" : "FINAL"
     });
-
   }
 
   return fixtures;
 }
-
 let games = [];
 
 
@@ -1057,6 +1050,13 @@ number.textContent =
     }
 
 
+    if (game.referee && activeRegular) {
+      const refereeLabel = document.createElement("div");
+      refereeLabel.className = "game-referee";
+      refereeLabel.textContent = `REFEREE: ${getTeamDisplayName(game.referee)}`;
+      matchup.appendChild(refereeLabel);
+    }
+
     const scoreArea =
       document.createElement(
         "div"
@@ -1447,25 +1447,18 @@ function renderFinalsPage() {
   const finals =
     getFinalGames();
 
-  const final1 =
-    finals.find(
-      game => game.id === 25
-    );
+  const finalsInOrder = [...finals].sort((a, b) => a.id - b.id);
+  const openingFinals = finalsInOrder.filter(
+    game => normalizeStage(game.stage) === "FINAL"
+  );
 
-  const final2 =
-    finals.find(
-      game => game.id === 26
-    );
+  const final1 = openingFinals[0] || null;
+  const final2 = openingFinals[1] || null;
+  const final3 = openingFinals[2] || null;
 
-  const final3 =
-    finals.find(
-      game => game.id === 27
-    );
-
-  const grandFinal =
-    finals.find(
-      game => game.id === 28
-    );
+  const grandFinal = finalsInOrder.find(
+    game => normalizeStage(game.stage) === "GRAND FINAL"
+  ) || null;
 
 
   /* ─────────────────────────
@@ -2338,6 +2331,19 @@ function renderAdminPage() {
 
             </div>
 
+            <div class="team-name-row">
+              <div class="team-name-label">
+                TEAM E
+              </div>
+              <input
+                id="teamNameE"
+                class="admin-input team-name-input"
+                type="text"
+                maxlength="30"
+                value="${teamNames["Team E"]}"
+              >
+            </div>
+
           </div>
 
 
@@ -2547,6 +2553,11 @@ function renderAdminPage() {
           "Team D":
             document.getElementById(
               "teamNameD"
+            ).value,
+
+          "Team E":
+            document.getElementById(
+              "teamNameE"
             ).value
 
         });
@@ -3602,6 +3613,9 @@ if (!game) {
 
 game.stage =
   sheetStage || "REGULAR";
+
+game.referee =
+  String(row[6] ?? "").trim();
 
         if (
           sheetHome !== ""
