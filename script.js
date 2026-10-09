@@ -10,8 +10,8 @@ const START_ELO = 1000;
 const K = 25;
 
 const MIN_GAMES_PER_TEAM = 3;
-const MAX_GAMES_PER_TEAM = 12;
-const DEFAULT_GAMES_PER_TEAM = 12;
+const MAX_GAMES_PER_TEAM = 16;
+const DEFAULT_GAMES_PER_TEAM = 16;
 
 const FINALS_COUNT = 4;
 
