@@ -25,18 +25,12 @@ const SHEET_URL =
    LOCAL COMPETITION SETTINGS
 ========================================================= */
 
+let currentGamesPerTeam = DEFAULT_GAMES_PER_TEAM;
+let sharedGamesSettingLoaded = false;
+let sharedGamesSettingError = "";
+
 function getGamesPerTeam() {
-  const saved = Number(localStorage.getItem("ultimate_games_per_team_5team"));
-
-  if (
-    Number.isInteger(saved) &&
-    saved >= MIN_GAMES_PER_TEAM &&
-    saved <= MAX_GAMES_PER_TEAM
-  ) {
-    return saved;
-  }
-
-  return DEFAULT_GAMES_PER_TEAM;
+  return currentGamesPerTeam;
 }
 
 function setGamesPerTeam(value) {
@@ -47,10 +41,10 @@ function setGamesPerTeam(value) {
     number < MIN_GAMES_PER_TEAM ||
     number > MAX_GAMES_PER_TEAM
   ) {
-    return;
+    throw new Error(`Games per team must be an integer from ${MIN_GAMES_PER_TEAM} to ${MAX_GAMES_PER_TEAM}.`);
   }
 
-  localStorage.setItem("ultimate_games_per_team_5team", number);
+  currentGamesPerTeam = number;
 }
 
 /* ─────────────────────────────────────
@@ -167,16 +161,28 @@ function readCommunityApi(action) {
   });
 }
 
-function postCommunitySettings(token, teams) {
+function postCommunityAction(payload) {
   return fetch(COMMUNITY_API_URL, {
     method: "POST",
     mode: "no-cors",
     headers: { "Content-Type": "text/plain;charset=UTF-8" },
-    body: JSON.stringify({
-      action: "updateTeamSettings",
-      adminToken: token,
-      teams
-    })
+    body: JSON.stringify(payload)
+  });
+}
+
+function postCommunitySettings(token, teams) {
+  return postCommunityAction({
+    action: "updateTeamSettings",
+    adminToken: token,
+    teams
+  });
+}
+
+function postCommunityGamesPerTeam(token, gamesPerTeam) {
+  return postCommunityAction({
+    action: "updateCompetitionSettings",
+    adminToken: token,
+    gamesPerTeam
   });
 }
 
@@ -231,8 +237,107 @@ async function loadCommunitySettings() {
   }
 }
 
+async function loadSharedCompetitionSettings() {
+  try {
+    const response = await readCommunityApi("getCompetitionSettings");
+    if (!response || response.ok !== true) {
+      throw new Error(response?.error || "The API did not return shared competition settings.");
+    }
+
+    const value = Number(response.gamesPerTeam);
+    if (!Number.isInteger(value) || value < MIN_GAMES_PER_TEAM || value > MAX_GAMES_PER_TEAM) {
+      throw new Error("The API returned an invalid games-per-team value.");
+    }
+
+    setGamesPerTeam(value);
+    sharedGamesSettingLoaded = true;
+    sharedGamesSettingError = "";
+
+    calculate();
+    renderGames();
+    renderFinalsPage();
+
+    const slider = document.getElementById("gamesPerTeamSlider");
+    const valueLabel = document.getElementById("gamesPerTeamValue");
+    const status = document.getElementById("gamesPerTeamStatus");
+    if (slider) slider.value = String(value);
+    if (valueLabel) valueLabel.textContent = String(value);
+    if (status) {
+      status.className = "admin-info";
+      status.textContent = "Connected to shared competition settings.";
+    }
+  } catch (error) {
+    sharedGamesSettingLoaded = false;
+    sharedGamesSettingError = error?.message || "Could not load shared competition settings.";
+    console.error("Could not load shared competition settings:", error);
+
+    const status = document.getElementById("gamesPerTeamStatus");
+    if (status) {
+      status.className = "admin-warning";
+      status.textContent = "Shared season length unavailable: " + sharedGamesSettingError;
+    }
+  }
+}
+
 function delayCommunityApi(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function saveSharedGamesPerTeam(value) {
+  if (!adminToken) {
+    throw new Error("Enter the admin token before saving.");
+  }
+
+  const desired = Number(value);
+  if (!Number.isInteger(desired) || desired < MIN_GAMES_PER_TEAM || desired > MAX_GAMES_PER_TEAM) {
+    throw new Error(`Games per team must be an integer from ${MIN_GAMES_PER_TEAM} to ${MAX_GAMES_PER_TEAM}.`);
+  }
+
+  await postCommunityGamesPerTeam(adminToken, desired);
+
+  let saved = null;
+  let lastReadError = null;
+
+  for (let attempt = 0; attempt < 7; attempt++) {
+    if (attempt > 0) {
+      await delayCommunityApi(700 + attempt * 400);
+    }
+
+    try {
+      const response = await readCommunityApi("getCompetitionSettings");
+      if (!response || response.ok !== true) {
+        throw new Error(response?.error || "The API did not return shared competition settings.");
+      }
+
+      const valueFromApi = Number(response.gamesPerTeam);
+      if (!Number.isInteger(valueFromApi) || valueFromApi < MIN_GAMES_PER_TEAM || valueFromApi > MAX_GAMES_PER_TEAM) {
+        throw new Error("The API returned an invalid games-per-team value.");
+      }
+
+      saved = valueFromApi;
+      if (saved === desired) break;
+    } catch (error) {
+      lastReadError = error;
+    }
+  }
+
+  if (saved === null) {
+    throw new Error(
+      "The write was sent, but the shared setting could not be read back" +
+      (lastReadError?.message ? ": " + lastReadError.message : ".")
+    );
+  }
+
+  if (saved !== desired) {
+    throw new Error(`Expected ${desired} games per team, but the API returned ${saved}.`);
+  }
+
+  setGamesPerTeam(saved);
+  sharedGamesSettingLoaded = true;
+  sharedGamesSettingError = "";
+  calculate();
+  renderGames();
+  renderFinalsPage();
 }
 
 async function saveSharedTeamNames(names) {
@@ -2577,11 +2682,17 @@ function renderAdminPage() {
           <div class="admin-info">
 
             Controls how many regular-season
-            games each team plays.
+            games each team plays. All visitors
+            use the same shared season length.
 
-            This setting is stored only in
-            this browser.
+          </div>
 
+          <div id="gamesPerTeamStatus" class="admin-info" role="status" aria-live="polite">
+            ${sharedGamesSettingLoaded
+              ? "Connected to shared competition settings."
+              : sharedGamesSettingError
+                ? "Shared setting unavailable: " + escapeHTML(sharedGamesSettingError)
+                : "Loading shared competition settings…"}
           </div>
 
         </div>
@@ -2744,24 +2855,36 @@ function renderAdminPage() {
   ───────────────────────────── */
 
   document
-    .getElementById(
-      "adminSave"
-    )
-    .addEventListener(
-      "click",
-      () => {
+    .getElementById("adminSave")
+    .addEventListener("click", async event => {
+      const button = event.currentTarget;
+      const desired = Number(slider.value);
+      const status = document.getElementById("gamesPerTeamStatus");
 
-        setGamesPerTeam(
-          slider.value
-        );
-
-        calculate();
-        renderGames();
-        renderFinalsPage();
-        renderAdminPage();
-
+      button.disabled = true;
+      if (status) {
+        status.className = "admin-info";
+        status.textContent = "Saving season length to the shared database and verifying…";
       }
-    );
+
+      try {
+        await saveSharedGamesPerTeam(desired);
+        renderAdminPage();
+        const refreshedStatus = document.getElementById("gamesPerTeamStatus");
+        if (refreshedStatus) {
+          refreshedStatus.className = "admin-success";
+          refreshedStatus.textContent = "Saved and verified. All visitors now use " + desired + " games per team.";
+        }
+      } catch (error) {
+        console.error("Could not save shared competition settings:", error);
+        if (status) {
+          status.className = "admin-warning";
+          status.textContent = "Could not verify the shared season-length save: " + (error?.message || "Unknown error");
+        }
+      } finally {
+        button.disabled = false;
+      }
+    });
 
 
   /* ─────────────────────────────
@@ -4004,3 +4127,4 @@ function calculate() {
 renderAdminPage();
 loadScoresFromSheet();
 loadCommunitySettings();
+loadSharedCompetitionSettings();
