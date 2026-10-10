@@ -262,25 +262,54 @@ async function saveSharedTeamNames(names) {
   }));
 
   await postCommunitySettings(adminToken, desired);
-  await delayCommunityApi(1400);
 
-  const savedResponse = await readCommunityApi("getTeamSettings");
-  const saved = normalizeCommunitySettings(savedResponse);
+  // A cross-origin no-cors POST is intentionally unreadable to the browser.
+  // Poll the public read endpoint briefly rather than assuming the sheet is
+  // visible after a single fixed delay.
+  let saved = null;
+  let namesMatch = false;
+  let lastReadError = null;
 
-  const namesMatch = saved.every(setting =>
-    setting.displayName === cleanedNames[`Team ${setting.teamId}`]
-  );
+  for (let attempt = 0; attempt < 7; attempt++) {
+    if (attempt > 0) {
+      await delayCommunityApi(700 + attempt * 400);
+    }
 
-  const timestampChanged = saved.some((setting, index) =>
-    setting.updatedAt && setting.updatedAt !== before[index].updatedAt
-  );
+    try {
+      const savedResponse = await readCommunityApi("getTeamSettings");
+      saved = normalizeCommunitySettings(savedResponse);
+      namesMatch = saved.every(setting =>
+        setting.displayName === cleanedNames[`Team ${setting.teamId}`]
+      );
 
-  if (!namesMatch) {
-    throw new Error("The saved names do not match your changes. The token may be incorrect, or the API rejected the update.");
+      if (namesMatch) break;
+    } catch (error) {
+      lastReadError = error;
+    }
   }
 
-  if (!timestampChanged) {
-    throw new Error("The API did not confirm a new saved timestamp. Check the admin token and try again.");
+  if (!saved) {
+    throw new Error(
+      "The save request was sent, but the API read-back failed" +
+      (lastReadError?.message ? ": " + lastReadError.message : ".") +
+      " Check the connection and read the team settings again before retrying."
+    );
+  }
+
+  if (!namesMatch) {
+    const differences = saved
+      .filter(setting =>
+        setting.displayName !== cleanedNames[`Team ${setting.teamId}`]
+      )
+      .map(setting =>
+        `Team ${setting.teamId}: expected "${cleanedNames[`Team ${setting.teamId}`]}", API returned "${setting.displayName}"`
+      );
+
+    throw new Error(
+      "The API read-back still differs after retrying. " +
+      differences.join("; ") +
+      ". This usually means the API rejected the write (for example, an incorrect token) or the update was not applied."
+    );
   }
 
   currentTeamSettings = saved;
