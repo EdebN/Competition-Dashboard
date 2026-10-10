@@ -1771,3 +1771,10 @@ tr:last-child td {
   .page-access-studio { min-height:42px; }
   .page-access-mark { width:40px; height:40px; flex-basis:40px; }
 }
+
+
+/* Public Team Editor navigation link */
+.nav-link-button { display:inline-flex; align-items:center; text-decoration:none; white-space:nowrap; }
+@media (max-width: 900px) {
+  .page-nav { flex-wrap:wrap; }
+}
