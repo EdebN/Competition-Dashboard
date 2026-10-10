@@ -7,7 +7,14 @@ const TEAMS = [
 ];
 
 const START_ELO = 1000;
-const K = 25;
+
+// Glicko-2 settings. Ratings use the dashboard's 1000-point starting scale;
+// RD is rating uncertainty in the same displayed-point scale.
+const GLICKO_INITIAL_RD = 350;
+const GLICKO_INITIAL_VOLATILITY = 0.06;
+const GLICKO_TAU = 0.5;
+const GLICKO_EPSILON = 0.000001;
+const GLICKO_SCALE = 173.7178;
 
 const MIN_GAMES_PER_TEAM = 3;
 const MAX_GAMES_PER_TEAM = 16;
@@ -576,11 +583,22 @@ function isPlayed(game) {
    ELO
 ========================================================= */
 
+/*
+ * Glicko-2 rating system.
+ *
+ * Ratings are displayed around START_ELO rather than the conventional
+ * 1500-point centre. This is only an offset; rating differences and
+ * probability calculations are unchanged.
+ *
+ * Glicko-2 uses win/draw/loss outcomes, not score margin. We still show
+ * the logarithmic score margin in the audit table, but do not let it
+ * distort the statistically defined Glicko update. A margin extension
+ * should only be added after validation against historical results.
+ */
 function expectedScore(
   ratingA,
   ratingB
 ) {
-
   return (
     1 /
     (
@@ -593,59 +611,82 @@ function expectedScore(
   );
 }
 
-/*
- * Logarithmic margin-of-victory adjustment, adapted from the
- * FiveThirtyEight NBA Elo approach.
- *
- * Larger margins matter with diminishing returns. Wins by a favourite
- * receive a smaller margin multiplier; an upset win receives a larger one.
- * Draws use a neutral multiplier of 1 so they still produce an Elo update.
- */
-function marginFactor(
-  scoreA,
-  scoreB,
-  ratingA,
-  ratingB
-) {
-  if (scoreA === scoreB) {
-    return 1;
-  }
-
-  const scoreMargin = Math.abs(scoreA - scoreB);
-  const winnerRating = scoreA > scoreB ? ratingA : ratingB;
-  const loserRating = scoreA > scoreB ? ratingB : ratingA;
-
-  const logarithmicMargin = Math.log(scoreMargin + 1);
-  const favouriteCorrection =
-    2.2 /
-    (
-      2.2 +
-      0.001 * (winnerRating - loserRating)
-    );
-
-  return logarithmicMargin * favouriteCorrection;
+function glickoG(phi) {
+  return 1 / Math.sqrt(
+    1 + (3 * phi * phi) / (Math.PI * Math.PI)
+  );
 }
 
-function actualScore(
-  scoreA,
-  scoreB
-) {
+function glickoExpected(mu, opponentMu, opponentPhi) {
+  const g = glickoG(opponentPhi);
+  return 1 / (1 + Math.exp(-g * (mu - opponentMu)));
+}
 
-  if (scoreA > scoreB)
-    return 1;
+function glickoVolatility(phi, sigma, delta, variance) {
+  const a = Math.log(sigma * sigma);
+  const tauSquared = GLICKO_TAU * GLICKO_TAU;
 
-  if (scoreA < scoreB)
-    return 0;
+  const f = x => {
+    const expX = Math.exp(x);
+    const numerator =
+      expX * (delta * delta - phi * phi - variance - expX);
+    const denominator =
+      2 * Math.pow(phi * phi + variance + expX, 2);
 
+    return numerator / denominator - (x - a) / tauSquared;
+  };
+
+  let A = a;
+  let B;
+
+  if (delta * delta > phi * phi + variance) {
+    B = Math.log(delta * delta - phi * phi - variance);
+  } else {
+    let k = 1;
+    B = a - k * GLICKO_TAU;
+
+    while (f(B) < 0 && k < 100) {
+      k += 1;
+      B = a - k * GLICKO_TAU;
+    }
+  }
+
+  let fA = f(A);
+  let fB = f(B);
+  let iterations = 0;
+
+  while (Math.abs(B - A) > GLICKO_EPSILON && iterations < 100) {
+    const C = A + ((A - B) * fA) / (fB - fA);
+    const fC = f(C);
+
+    if (fC * fB < 0) {
+      A = B;
+      fA = fB;
+    } else {
+      fA /= 2;
+    }
+
+    B = C;
+    fB = fC;
+    iterations += 1;
+  }
+
+  return Math.exp(A / 2);
+}
+
+function marginFactor(scoreA, scoreB) {
+  if (scoreA === scoreB) return 1;
+  return Math.log(Math.abs(scoreA - scoreB) + 1);
+}
+
+function actualScore(scoreA, scoreB) {
+  if (scoreA > scoreB) return 1;
+  if (scoreA < scoreB) return 0;
   return 0.5;
 }
 
 function formatChange(value) {
-
-  if (
-    Math.abs(value) <
-    0.000001
-  ) {
+  if (Math.abs(value) < 0.000001) {
     return "0.00";
   }
 
@@ -654,136 +695,219 @@ function formatChange(value) {
     : value.toFixed(2);
 }
 
-function calculateElo() {
+function toGlickoState(rating, rd, volatility) {
+  return {
+    rating,
+    rd,
+    volatility,
+    mu: (rating - START_ELO) / GLICKO_SCALE,
+    phi: rd / GLICKO_SCALE
+  };
+}
 
-  const ratings = {};
+function fromGlickoState(state) {
+  return {
+    rating: START_ELO + state.mu * GLICKO_SCALE,
+    rd: state.phi * GLICKO_SCALE,
+    volatility: state.volatility,
+    mu: state.mu,
+    phi: state.phi
+  };
+}
+
+function updateGlickoPeriod(state, results) {
+  const phi = state.phi;
+  const sigma = state.volatility;
+
+  // No games in this rating period: preserve the estimate and let
+  // uncertainty grow by the volatility term, as Glicko-2 specifies.
+  if (!results.length) {
+    return fromGlickoState({
+      mu: state.mu,
+      phi: Math.sqrt(phi * phi + sigma * sigma),
+      volatility: sigma
+    });
+  }
+
+  let sumVariance = 0;
+  let sumResidual = 0;
+
+  results.forEach(result => {
+    const g = glickoG(result.opponent.phi);
+    const expected = glickoExpected(
+      state.mu,
+      result.opponent.mu,
+      result.opponent.phi
+    );
+
+    sumVariance += g * g * expected * (1 - expected);
+    sumResidual += g * (result.score - expected);
+  });
+
+  if (sumVariance <= 0) {
+    return fromGlickoState({
+      mu: state.mu,
+      phi: Math.sqrt(phi * phi + sigma * sigma),
+      volatility: sigma
+    });
+  }
+
+  const variance = 1 / sumVariance;
+  const delta = variance * sumResidual;
+  const newVolatility = glickoVolatility(
+    phi,
+    sigma,
+    delta,
+    variance
+  );
+
+  const phiStar = Math.sqrt(
+    phi * phi + newVolatility * newVolatility
+  );
+  const newPhi = 1 / Math.sqrt(
+    1 / (phiStar * phiStar) + 1 / variance
+  );
+  const newMu = state.mu + newPhi * newPhi * sumResidual;
+
+  return fromGlickoState({
+    mu: newMu,
+    phi: newPhi,
+    volatility: newVolatility
+  });
+}
+
+function calculateElo() {
+  const states = {};
 
   TEAMS.forEach(team => {
-    ratings[team] =
-      START_ELO;
+    states[team] = toGlickoState(
+      START_ELO,
+      GLICKO_INITIAL_RD,
+      GLICKO_INITIAL_VOLATILITY
+    );
   });
 
   const eloRows = [];
+  const activeGames = getActiveRegularGames();
 
-  // Process matches in fixture order. Each result affects the ratings
-  // used to calculate expectations for later matches.
-  getActiveRegularGames()
-    .forEach(game => {
+  // Fixtures are generated in rounds of two matches. Every result in a
+  // round uses the same pre-round ratings, then all teams update together.
+  // This avoids order-dependent ratings when simultaneous matches exist.
+  for (let roundStart = 0; roundStart < activeGames.length; roundStart += 2) {
+    const roundGames = activeGames.slice(roundStart, roundStart + 2);
+    const preRound = {};
 
-      const preA =
-        ratings[game.home];
+    TEAMS.forEach(team => {
+      preRound[team] = { ...states[team] };
+    });
 
-      const preB =
-        ratings[game.away];
+    const resultsByTeam = {};
+    TEAMS.forEach(team => {
+      resultsByTeam[team] = [];
+    });
+
+    const roundRows = roundGames.map(game => {
+      const preA = preRound[game.home];
+      const preB = preRound[game.away];
 
       let scoreA = "";
       let scoreB = "";
 
       if (scores[game.id]) {
-
-        scoreA =
-          scores[game.id].home;
-
-        scoreB =
-          scores[game.id].away;
+        scoreA = scores[game.id].home;
+        scoreB = scores[game.id].away;
       }
 
-      let expectedA = 0.5;
+      let expectedA = glickoExpected(
+        preA.mu,
+        preB.mu,
+        preB.phi
+      );
       let margin = 0;
       let changeA = 0;
       let changeB = 0;
 
-      let postA = preA;
-      let postB = preB;
+      let postA = preA.rating;
+      let postB = preB.rating;
+      let rdA = preA.rd;
+      let rdB = preB.rd;
 
       if (isPlayed(game)) {
+        scoreA = Number(scoreA);
+        scoreB = Number(scoreB);
 
-        scoreA =
-          Number(scoreA);
+        const resultA = actualScore(scoreA, scoreB);
+        margin = marginFactor(scoreA, scoreB);
 
-        scoreB =
-          Number(scoreB);
-
-        expectedA =
-          expectedScore(
-            preA,
-            preB
-          );
-
-        const actualA =
-          actualScore(
-            scoreA,
-            scoreB
-          );
-
-        margin =
-          marginFactor(
-            scoreA,
-            scoreB,
-            preA,
-            preB
-          );
-
-        // Both teams' changes are calculated from the same pre-match
-        // ratings and expected result. This keeps the update zero-sum.
-        changeA =
-          K *
-          margin *
-          (
-            actualA -
-            expectedA
-          );
-
-        changeB =
-          -changeA;
-
-        postA =
-          preA + changeA;
-
-        postB =
-          preB + changeB;
-
-        ratings[game.home] =
-          postA;
-
-        ratings[game.away] =
-          postB;
+        resultsByTeam[game.home].push({
+          opponent: preB,
+          score: resultA
+        });
+        resultsByTeam[game.away].push({
+          opponent: preA,
+          score: 1 - resultA
+        });
       }
 
-      eloRows.push({
-
+      return {
         game: game.id,
-
-        teamA:
-          game.home,
-
+        teamA: game.home,
         scoreA,
-
-        teamB:
-          game.away,
-
+        teamB: game.away,
         scoreB,
-
-        preA,
-        preB,
-
+        preA: preA.rating,
+        preB: preB.rating,
+        preRDA: preA.rd,
+        preRDB: preB.rd,
         expectedA,
-
         margin,
-
         changeA,
         changeB,
-
         postA,
-        postB
-
-      });
-
+        postB,
+        rdA,
+        rdB
+      };
     });
+
+    // Apply each team's Glicko-2 update once per rating period.
+    TEAMS.forEach(team => {
+      states[team] = updateGlickoPeriod(
+        preRound[team],
+        resultsByTeam[team]
+      );
+    });
+
+    roundRows.forEach(row => {
+      const postA = states[row.teamA];
+      const postB = states[row.teamB];
+
+      row.postA = postA.rating;
+      row.postB = postB.rating;
+      row.rdA = postA.rd;
+      row.rdB = postB.rd;
+      row.changeA = postA.rating - row.preA;
+      row.changeB = postB.rating - row.preB;
+      eloRows.push(row);
+    });
+  }
+
+  const finalRatings = {};
+  const finalRatingDetails = {};
+
+  TEAMS.forEach(team => {
+    finalRatings[team] = states[team].rating;
+    finalRatingDetails[team] = {
+      rating: states[team].rating,
+      rd: states[team].rd,
+      volatility: states[team].volatility
+    };
+  });
 
   return {
     rows: eloRows,
-    finalRatings: ratings
+    finalRatings,
+    finalRatingDetails
   };
 }
 
@@ -1652,6 +1776,8 @@ function renderEloTable(
             <th>CHANGE B</th>
             <th>POST A</th>
             <th>POST B</th>
+            <th>RD A</th>
+            <th>RD B</th>
 
           </tr>
 
@@ -1740,6 +1866,14 @@ function renderEloTable(
 
         <td>
           ${row.postB.toFixed(2)}
+        </td>
+
+        <td title="Team A rating deviation after this rating period">
+          ${row.rdA.toFixed(1)}
+        </td>
+
+        <td title="Team B rating deviation after this rating period">
+          ${row.rdB.toFixed(1)}
         </td>
 
       </tr>
