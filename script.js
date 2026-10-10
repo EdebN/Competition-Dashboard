@@ -2952,7 +2952,7 @@ function renderAdminPage() {
       const teamId = button.dataset.team;
       const pinDisplay = document.getElementById("pageAccessPin" + teamId);
       const status = document.getElementById("pageAccessStatus");
-      if (!pinDisplay || !/^\\d{6}$/.test(pinDisplay.textContent.trim())) return;
+      if (!pinDisplay || !/^\d{6}$/.test(pinDisplay.textContent.trim())) return;
       try {
         await navigator.clipboard.writeText(pinDisplay.textContent.trim());
         button.textContent = "COPIED";
