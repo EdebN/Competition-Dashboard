@@ -49,6 +49,7 @@ document.getElementById("accessForm").addEventListener("submit",event=>{
   delete window[callback];script.remove();
   if(result&&result.ok&&["A","B","C","D","E"].includes(result.teamId)){
    sessionStorage.setItem("team-editor-authorized-team",result.teamId);
+   if(result.sessionToken)sessionStorage.setItem("team-editor-session-token",result.sessionToken);
    location.href="studio.html?team="+encodeURIComponent(result.teamId);
   }else status.textContent="PIN not recognised. Check it or ask the admin to reset it.";
  };
