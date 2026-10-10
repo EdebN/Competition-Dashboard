@@ -4409,6 +4409,7 @@ function calculate() {
 
   if (
     currentPage !== "home" &&
+    currentPage !== "matches" &&
     currentPage !== "finals" &&
     currentPage !== "admin"
   ) {
