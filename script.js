@@ -15,7 +15,7 @@ const DEFAULT_GAMES_PER_TEAM = 16;
 
 const FINALS_COUNT = 4;
 
-const COMMUNITY_API_URL = "https://script.google.com/macros/s/AKfycbxxEbq_enWTzEwKUtfPo2aIEn9JNWWQi8WGEEktr3aNk2XNQ_9aRyq07EPfX4GEWw/exec";
+const COMMUNITY_API_URL = "https://script.google.com/macros/s/AKfycbx5c_8WPCYsyK0RJr3LhyvLD4FQQnWAes5CfP3KrQYHLq0ROzIsx3MA-WfsgDCPRl4X/exec";
 
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vT2tLmAB4OB6uWLeBeCSWLMarzK9RjelvVTJRGqsm94yVijiT25leyXnPWhJybPtoyMKUgfBL6tTzFe/pub?output=csv";
@@ -3411,6 +3411,162 @@ function getTeamNameFromPage(
    TEAM PAGE
 ========================================================= */
 
+const publishedTeamPageCache = new Map();
+const publishedTeamPageRequests = new Map();
+
+function requestPublishedTeamPage(teamId) {
+  return new Promise((resolve, reject) => {
+    const callback = "publishedPage_" + Date.now() + "_" + Math.floor(Math.random() * 1000000);
+    const script = document.createElement("script");
+    const url = new URL(COMMUNITY_API_URL);
+    url.searchParams.set("action", "getPublishedTeamPage");
+    url.searchParams.set("teamId", teamId);
+    url.searchParams.set("callback", callback);
+    url.searchParams.set("_", String(Date.now()));
+    const timeout = setTimeout(() => {
+      delete window[callback];
+      script.remove();
+      reject(new Error("Published page request timed out."));
+    }, 8000);
+    window[callback] = data => {
+      clearTimeout(timeout);
+      delete window[callback];
+      script.remove();
+      resolve(data);
+    };
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[callback];
+      script.remove();
+      reject(new Error("Could not load the published team page."));
+    };
+    script.src = url.toString();
+    document.head.appendChild(script);
+  });
+}
+
+function safePublishedColor(value, fallback) {
+  const color = String(value || "").trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(color) || /^(transparent|white|black|red|blue|green|orange|purple|gray|grey)$/i.test(color) || /^rgba?\([0-9.,%\s]+\)$/i.test(color) || /^hsla?\([0-9.,%\s]+\)$/i.test(color)) return color;
+  return fallback;
+}
+
+function publishedNumber(value, fallback, min, max) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function publishedStatValue(metric, team) {
+  const values = {
+    elo: Number(team.elo).toFixed(1),
+    rank: team.rank ? "#" + team.rank : "—",
+    played: team.played,
+    wins: team.wins,
+    losses: team.losses,
+    draws: team.draws,
+    pointsFor: team.pf,
+    pointsAgainst: team.pa,
+    diff: (team.diff > 0 ? "+" : "") + team.diff,
+    winPct: (Number(team.winPercent || 0) * 100).toFixed(1) + "%",
+    form: Array.isArray(team.form) && team.form.length ? team.form.map(item => item.result).join(" ") : "—"
+  };
+  return values[metric] === undefined ? "—" : String(values[metric]);
+}
+
+function publishedBlockHTML(block, team) {
+  const b = block || {};
+  const type = String(b.type || "text");
+  const text = String(b.text || "");
+  const escaped = escapeHTML(text);
+  const color = safePublishedColor(b.color, "#263247");
+  const bg = safePublishedColor(b.bg, "transparent");
+  const fontSize = publishedNumber(b.fontSize, 16, 10, 96);
+  const padding = publishedNumber(b.padding, 8, 0, 100);
+  const radius = publishedNumber(b.radius, 0, 0, 100);
+  const align = ["left", "center", "right"].includes(b.align) ? b.align : "left";
+  const common = "box-sizing:border-box;width:100%;text-align:" + align + ";color:" + color + ";background:" + bg + ";padding:" + padding + "px;border-radius:" + radius + "px;font-size:" + fontSize + "px;";
+  const lines = text.split("\n");
+  let inner = "";
+
+  if (type === "heading") {
+    const tag = b.tag === "h2" ? "h2" : "h1";
+    inner = "<" + tag + " style='font-size:" + fontSize + "px;color:" + color + ";text-align:" + align + ";margin:0;white-space:pre-wrap'>" + escaped + "</" + tag + ">";
+  } else if (type === "text") {
+    inner = "<p style='font-size:" + fontSize + "px;color:" + color + ";text-align:" + align + ";margin:0;white-space:pre-wrap'>" + escaped + "</p>";
+  } else if (type === "image") {
+    const src = String(b.src || "");
+    const allowedSrc = /^https?:\/\//i.test(src) || /^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(src);
+    inner = allowedSrc && src.length < 6000000
+      ? "<img src='" + escapeHTML(src) + "' alt='" + escapeHTML(String(b.alt || "")) + "' loading='lazy' style='width:100%;max-height:620px;object-fit:cover;border-radius:" + radius + "px;margin:auto;display:block'>"
+      : "<div style='padding:24px;text-align:center;color:#667085'>Image unavailable. Use a hosted image URL.</div>";
+  } else if (type === "button") {
+    inner = "<div style='text-align:" + align + "'><span style='display:inline-block;background:" + safePublishedColor(b.bg, "#6254e8") + ";color:" + safePublishedColor(b.color, "#ffffff") + ";padding:" + padding + "px 20px;border-radius:" + radius + "px;font-weight:750'>" + escaped + "</span></div>";
+  } else if (type === "card") {
+    inner = "<div style='" + common + ";border:1px solid #e0e5ef;white-space:pre-wrap'><div style='font-size:" + Math.round(fontSize * 1.35) + "px;font-weight:800;margin-bottom:8px'>" + escapeHTML(lines[0]) + "</div>" + escapeHTML(lines.slice(1).join("\n")) + "</div>";
+  } else if (type === "stat") {
+    const label = text || String(b.metric || "wins");
+    inner = "<div style='" + common + ";border:1px solid #e0e5ef'><span style='display:block;font-size:12px;font-weight:750;letter-spacing:.08em;text-transform:uppercase'>" + escapeHTML(label) + "</span><strong style='display:block;font-size:" + Math.round(fontSize * 2) + "px;margin-top:7px'>" + escapeHTML(publishedStatValue(String(b.metric || "wins"), team)) + "</strong><small style='display:block;margin-top:5px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.65'>Live competition data</small></div>";
+  } else if (type === "divider") {
+    inner = "<div style='height:2px;background:" + safePublishedColor(b.color, "#d7dce5") + ";margin:" + padding + "px 0'></div>";
+  } else if (type === "spacer") {
+    inner = "<div style='height:" + publishedNumber(b.height, 48, 8, 600) + "px'></div>";
+  } else if (type === "badge") {
+    inner = "<div><span style='display:inline-block;background:" + safePublishedColor(b.bg, "#e8e5ff") + ";color:" + safePublishedColor(b.color, "#5547b8") + ";font-size:" + fontSize + "px;padding:" + Math.max(3, padding / 2) + "px " + padding + "px;border-radius:" + radius + "px'>" + escaped + "</span></div>";
+  } else if (type === "quote") {
+    inner = "<blockquote style='" + common + ";font-weight:650;font-style:italic;white-space:pre-wrap;margin:0;border-left:4px solid " + color + "'>" + escaped + "</blockquote>";
+  } else {
+    inner = "<p style='margin:0;white-space:pre-wrap'>" + escaped + "</p>";
+  }
+
+  const span = Math.min(4, Math.max(1, Math.round((Number(b.width) || 100) / 25)));
+  const position = ["left", "center", "right"].includes(b.position) ? b.position : "auto";
+  let column = "span " + span;
+  if (position === "left") column = "1 / span " + span;
+  else if (position === "right") column = (5 - span) + " / span " + span;
+  else if (position === "center") column = (Math.floor((4 - span) / 2) + 1) + " / span " + span;
+  const valign = b.verticalAlign === "middle" ? "center" : b.verticalAlign === "bottom" ? "end" : "start";
+  return "<section class='published-page-block' style='grid-column:" + column + ";align-self:" + valign + ";min-width:0'>" + inner + "</section>";
+}
+
+function renderPublishedTeamPage(container, design, team) {
+  if (!design || !Array.isArray(design.blocks)) return;
+  const pageBg = safePublishedColor(design.pageBg, "#f5f7fb");
+  const pagePadding = publishedNumber(design.pagePadding, 30, 0, 100);
+  const pageTitle = String(design.pageTitle || "").trim();
+  const titleHTML = pageTitle ? "<h1 class='published-page-title'>" + escapeHTML(pageTitle) + "</h1>" : "";
+  const blocksHTML = design.blocks.map(block => publishedBlockHTML(block, team)).join("");
+  container.innerHTML =
+    "<style>.published-team-page{box-sizing:border-box;width:100%;min-height:100%;background:var(--published-page-bg);padding:var(--published-page-padding);border-radius:16px}.published-page-title{margin:0 0 22px;font-size:clamp(24px,4vw,40px);line-height:1.15;color:#182033}.published-page-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.published-page-block{min-width:0;overflow-wrap:anywhere}.published-page-block img{max-width:100%}@media(max-width:720px){.published-page-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.published-page-block{grid-column:span 2!important}}@media(max-width:420px){.published-team-page{padding:16px}}</style>" +
+    "<div class='published-team-page' style='--published-page-bg:" + pageBg + ";--published-page-padding:" + pagePadding + "px'>" +
+    titleHTML + "<div class='published-page-grid'>" + blocksHTML + "</div></div>";
+}
+
+function loadPublishedTeamPage(teamName, container, team) {
+  const teamId = String(teamName).slice(-1).toUpperCase();
+  if (!/^[A-E]$/.test(teamId)) return;
+  if (publishedTeamPageCache.has(teamId)) {
+    const design = publishedTeamPageCache.get(teamId);
+    if (design) renderPublishedTeamPage(container, design, team);
+    return;
+  }
+  if (publishedTeamPageRequests.has(teamId)) {
+    publishedTeamPageRequests.get(teamId).then(design => {
+      if (design) renderPublishedTeamPage(container, design, team);
+    }).catch(() => {});
+    return;
+  }
+  const request = requestPublishedTeamPage(teamId).then(result => {
+    const design = result && result.ok && result.design && Array.isArray(result.design.blocks) ? result.design : null;
+    publishedTeamPageCache.set(teamId, design);
+    if (design) renderPublishedTeamPage(container, design, team);
+    return design;
+  }).catch(error => {
+    console.warn("Could not load published page for Team " + teamId + "; showing the original page.", error);
+    throw error;
+  }).finally(() => publishedTeamPageRequests.delete(teamId));
+  publishedTeamPageRequests.set(teamId, request);
+}
+
 function renderTeamPage(teamName) {
   console.log("RENDERING TEAM:", teamName);
   const container =
@@ -3758,6 +3914,7 @@ if (!container) {
 
     </div>
   `;
+  loadPublishedTeamPage(teamName, container, team);
 }
  
 
