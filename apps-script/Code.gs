@@ -2,6 +2,8 @@ const SERVICE_NAME = "competition-community-api";
 const API_VERSION = 1;
 
 const TEAM_SETTINGS_TAB = "Team Settings";
+const TEAM_EDITOR_PINS_TAB = "Team Editor PINs";
+const TEAM_EDITOR_PIN_HEADERS = ["Team ID", "PIN", "Updated At"];
 const TEAM_IDS = ["A", "B", "C", "D", "E"];
 const TEAM_SETTINGS_HEADERS = [
   "Team ID",
