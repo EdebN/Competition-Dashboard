@@ -2780,9 +2780,33 @@ function renderAdminPage() {
 
     </section>
 
+
+    <section class="card admin-card page-access-card">
+      <div class="section-title">TEAM CONTENT</div>
+      <div class="page-access-heading"><div><h2>Page Editor Access</h2><p class="page-access-intro">Give each team’s social manager access to their own page. They can build the look, write updates and manage photos without touching competition settings.</p></div><div class="page-access-mark" aria-hidden="true">✦</div></div>
+      <div class="page-access-notice"><span class="page-access-notice-dot"></span><div><strong>Editor access preview</strong><br>These are temporary demo PINs only. They are not saved and do not unlock editing yet.</div></div>
+      <div class="page-access-grid" id="pageAccessTeams"></div>
+      <div class="page-access-footer"><div><strong>Ready for the creative bit?</strong><p>Canvas Studio is where the team pages will be designed.</p></div><a class="admin-button page-access-studio" href="studio.html">OPEN CANVAS STUDIO ↗</a></div>
+      <div id="pageAccessStatus" class="admin-info" role="status" aria-live="polite">This is the first UI pass. Demo PINs exist only in this page until we connect real access.</div>
+    </section>
+
   `;
 
 
+  const pageAccessTeams = document.getElementById("pageAccessTeams");
+  if (pageAccessTeams) {
+    const accents = ["#8b7cff", "#55d6be", "#ffb86b", "#ff729f", "#7bb7ff"];
+    pageAccessTeams.innerHTML = TEAMS.map((team, index) => {
+      const teamId = team.slice(-1);
+      const displayName = teamNames[team] || team;
+      return '<article class="page-access-team" style="--team-accent:' + accents[index % accents.length] + '">' +
+        '<div class="page-access-team-top"><div class="page-access-avatar">' + escapeHTML(teamId) + '</div><span class="page-access-status">NOT SET UP</span></div>' +
+        '<h3>' + escapeHTML(displayName) + '</h3><p>Team ' + escapeHTML(teamId) + ' page</p>' +
+        '<div class="page-access-pin" id="pageAccessPin' + teamId + '">••••••</div>' +
+        '<div class="page-access-actions"><button type="button" class="admin-button page-access-generate" data-team="' + teamId + '">GENERATE DEMO PIN</button>' +
+        '<button type="button" class="page-access-copy" data-team="' + teamId + '" disabled>COPY</button></div></article>';
+    }).join("");
+  }
   /* ─────────────────────────────
      GAMES PER TEAM
   ───────────────────────────── */
@@ -2906,6 +2930,38 @@ function renderAdminPage() {
 
       }
     );
+
+  document.querySelectorAll(".page-access-generate").forEach(button => {
+    button.addEventListener("click", () => {
+      const teamId = button.dataset.team;
+      const pin = String(Math.floor(100000 + Math.random() * 900000));
+      const pinDisplay = document.getElementById("pageAccessPin" + teamId);
+      const copyButton = document.querySelector('.page-access-copy[data-team="' + teamId + '"]');
+      const status = document.getElementById("pageAccessStatus");
+      if (pinDisplay) pinDisplay.textContent = pin;
+      if (copyButton) { copyButton.disabled = false; copyButton.textContent = "COPY"; }
+      button.textContent = "REGENERATE DEMO PIN";
+      const badge = button.closest(".page-access-team")?.querySelector(".page-access-status");
+      if (badge) { badge.textContent = "DEMO ONLY"; badge.classList.add("is-demo"); }
+      if (status) status.textContent = "Demo PIN created for Team " + teamId + ". It is temporary and does not grant access yet."; 
+    });
+  });
+
+  document.querySelectorAll(".page-access-copy").forEach(button => {
+    button.addEventListener("click", async () => {
+      const teamId = button.dataset.team;
+      const pinDisplay = document.getElementById("pageAccessPin" + teamId);
+      const status = document.getElementById("pageAccessStatus");
+      if (!pinDisplay || !/^\\d{6}$/.test(pinDisplay.textContent.trim())) return;
+      try {
+        await navigator.clipboard.writeText(pinDisplay.textContent.trim());
+        button.textContent = "COPIED";
+        if (status) status.textContent = "Demo PIN copied. It still does not grant access."; 
+      } catch (error) {
+        if (status) status.textContent = "Clipboard access was blocked. Select the PIN and copy it manually."; 
+      }
+    });
+  });
 
 }
 const ADMIN_TOKEN_SHA256 = "e6ef5b690136ed115a1f22323c86ba0316ffbf62118c83ae99cd192eff845d36";
