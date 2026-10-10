@@ -128,7 +128,7 @@ function renderInspector(){
  html+='<div class="two">'+field("Width (%)","width",b.width,"number",{min:10,max:100})+field("Padding (px)","padding",b.padding,"number",{min:0,max:100})+'</div>';
  html+='<div class="two">'+field("Corner radius","radius",b.radius,"number",{min:0,max:100})+'<div class="field"><label for="prop-align">Alignment</label><select id="prop-align"><option '+(b.align==="left"?"selected":"")+' value="left">Left</option><option '+(b.align==="center"?"selected":"")+' value="center">Center</option><option '+(b.align==="right"?"selected":"")+' value="right">Right</option></select></div></div>';
  inspector.innerHTML=html;
- ["text","src","alt","fontSize","color","bg","width","padding","radius","height"].forEach(key=>{const input=$("prop-"+key);if(!input)return;input.addEventListener(input.tagName==="TEXTAREA"?"input":"change",()=>{const actualKey=key==="text"&&b.type==="image"?"alt":key;updateProp(actualKey,["fontSize","width","padding","radius","height"].includes(key)?Number(input.value):input.value);});});
+ ["text","src","alt","fontSize","color","bg","width","padding","radius","height"].forEach(key=>{const input=$("prop-"+key);if(!input)return;input.addEventListener("change",()=>{const actualKey=key==="text"&&b.type==="image"?"alt":key;updateProp(actualKey,["fontSize","width","padding","radius","height"].includes(key)?Number(input.value):input.value);});});
  $("prop-align")?.addEventListener("change",e=>updateProp("align",e.target.value));
  $("uploadImageBtn")?.addEventListener("click",()=>{$("imageFile").click();});
 }
