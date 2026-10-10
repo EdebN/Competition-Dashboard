@@ -1781,6 +1781,9 @@ tr:last-child td {
 
 
 
-/* Standalone Team Editor portal directly below the Admin controls card */
-.admin-portal-entry { margin: 14px 0 22px; }
-.admin-portal-entry .page-access-studio { display:flex; width:100%; min-height:46px; box-sizing:border-box; }
+
+
+
+/* Team Editor portal at the bottom of all Admin controls */
+.admin-portal-entry { margin: 18px 0 26px; max-width: 650px; }
+.admin-portal-entry .page-access-studio { display:flex; width:100%; min-height:46px; box-sizing:border-box; align-items:center; justify-content:center; }
