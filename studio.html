@@ -92,6 +92,64 @@ const STAT_METRICS=[
  {key:"diff",label:"Point difference"},{key:"winPct",label:"Win percentage"},{key:"form",label:"Recent form"}
 ];
 function makeBlock(type,values={}){return {id:"b"+(++seq),type,...structuredClone(defaults[type]||defaults.text),...values};}
+
+let liveTeamStats=null;
+let statsFrame=null;
+function formatStatValue(key,team){
+ if(!team)return "—";
+ const values={
+  elo:Number(team.elo).toFixed(1),
+  rank:team.rank?"#"+team.rank:"—",
+  played:team.played,
+  wins:team.wins,
+  losses:team.losses,
+  draws:team.draws,
+  pointsFor:team.pf,
+  pointsAgainst:team.pa,
+  diff:(team.diff>0?"+":"")+team.diff,
+  winPct:Number(team.winPercent||0).toFixed(1)+"%",
+  form:Array.isArray(team.form)&&team.form.length?team.form.map(item=>item.result).join(" "):"—"
+ };
+ return values[key]===undefined?"—":String(values[key]);
+}
+function refreshStatPreviews(){
+ if(!liveTeamStats)return;
+ blocks.filter(b=>b.type==="stat").forEach(b=>{
+  const el=canvas.querySelector('[data-id="'+b.id+'"] .stat strong');
+  if(el)el.textContent=formatStatValue(b.metric||"wins",liveTeamStats);
+  const note=canvas.querySelector('[data-id="'+b.id+'"] .stat small');
+  if(note)note.textContent="LIVE · competition data";
+ });
+}
+function startStatsPreview(){
+ if(statsFrame)return;
+ statsFrame=document.createElement("iframe");
+ statsFrame.title="Competition data source";
+ statsFrame.setAttribute("aria-hidden","true");
+ statsFrame.tabIndex=-1;
+ statsFrame.style.cssText="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-10px;bottom:-10px;border:0";
+ statsFrame.src="index.html?studioStatsPreview=1";
+ statsFrame.onload=()=>{
+  let attempts=0;
+  const timer=setInterval(()=>{
+   attempts++;
+   try{
+    const win=statsFrame.contentWindow;
+    if(typeof win.calculateElo==="function"&&typeof win.calculateLadder==="function"&&win.document.getElementById("ladder")?.querySelector("table")){
+     const elo=win.calculateElo();
+     const ladder=win.calculateLadder(elo.finalRatings);
+     const teamName="Team "+(validStudioTeam||"A");
+     liveTeamStats=ladder.find(team=>team.team===teamName)||null;
+     refreshStatPreviews();
+     clearInterval(timer);
+    }
+   }catch(error){/* Wait for the same-origin dashboard data to finish loading. */}
+   if(attempts>=40)clearInterval(timer);
+  },500);
+ };
+ document.body.appendChild(statsFrame);
+}
+
 function snapshot(){return JSON.stringify({blocks,selected,pageTitle:$("pageTitle").value,pageBg:$("pageBg").value,pagePadding:$("pagePadding").value});}
 function pushHistory(){if(suppressHistory)return;const s=snapshot();if(history[historyIndex]===s)return;history=history.slice(0,historyIndex+1);history.push(s);if(history.length>80)history.shift();historyIndex=history.length-1;updateHistoryButtons();}
 function restore(s){suppressHistory=true;const d=JSON.parse(s);blocks=d.blocks||[];selected=d.selected||null;$("pageTitle").value=d.pageTitle||"My page";$("pageBg").value=d.pageBg||"#f5f7fb";$("pagePadding").value=d.pagePadding||30;seq=Math.max(seq,...blocks.map(b=>Number(b.id.slice(1))||0));render();suppressHistory=false;updateHistoryButtons();}
@@ -130,7 +188,7 @@ function render(){
   canvas.appendChild(el);
  });
  $("blockCount").textContent="· "+blocks.length+" block"+(blocks.length===1?"":"s");
- renderInspector();updateHistoryButtons();
+ renderInspector();updateHistoryButtons();refreshStatPreviews();
 }
 canvas.addEventListener("click",()=>select(null));
 function select(id){selected=id;render();const el=canvas.querySelector('[data-id="'+id+'"]');if(el&&id)el.scrollIntoView({block:"nearest",behavior:"smooth"});}
@@ -174,7 +232,7 @@ $("exportHtmlBtn").onclick=()=>{const title=esc($("pageTitle").value||"My page")
 function exportBlock(b){const lines=String(b.text||"").split("\n"),safe=esc;const style='color:'+b.color+';background:'+b.bg+';padding:'+b.padding+'px;border-radius:'+b.radius+'px;font-size:'+b.fontSize+'px;white-space:pre-wrap;';if(b.type==="heading")return '<h1 style="margin:0;'+style+'">'+safe(b.text)+'</h1>';if(b.type==="text")return '<p style="margin:0;'+style+'">'+safe(b.text)+'</p>';if(b.type==="image")return b.src?'<img src="'+safe(b.src)+'" alt="'+safe(b.alt)+'" style="width:100%;object-fit:cover;border-radius:'+b.radius+'px">':'<p>'+safe(b.alt||"Image placeholder")+'</p>';if(b.type==="button")return '<div><span style="display:inline-block;'+style+'font-weight:750">'+safe(b.text)+'</span></div>';if(b.type==="card")return '<div style="'+style+'border:1px solid #e0e5ef"><h2 style="margin:0 0 8px">'+safe(lines[0])+'</h2>'+safe(lines.slice(1).join("\n"))+'</div>';if(b.type==="stat"){const metric=STAT_METRICS.find(m=>m.key===b.metric)||STAT_METRICS[0];return '<div data-stat="'+safe(metric.key)+'" style="'+style+'border:1px solid #e0e5ef"><div>'+safe(b.text||metric.label)+'</div><strong style="font-size:28px">Linked metric: '+safe(metric.label)+'</strong></div>';}if(b.type==="divider")return '<hr style="border:0;height:2px;background:'+b.color+';margin:'+b.padding+'px 0">';if(b.type==="spacer")return '<div style="height:'+Math.max(8,Number(b.height)||48)+'px"></div>';if(b.type==="badge")return '<span style="'+style+'display:inline-block;font-size:'+b.fontSize+'px;font-weight:750">'+safe(b.text)+'</span>';if(b.type==="quote")return '<blockquote style="'+style+'font-weight:650;font-style:italic;margin:0;border-left:4px solid '+b.color+'">'+safe(b.text)+'</blockquote>';return safe(b.text);}
 let toastTimer;function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200);}
 blocks=[makeBlock("badge",{text:"TEAM SPOTLIGHT"}),makeBlock("heading",{text:"Build something yours",fontSize:44}),makeBlock("text",{text:"This is a freeform canvas. Add blocks, move them around, drop in images, and style every element."}),makeBlock("image",{alt:"Upload your own team photo, logo or banner",src:""}),makeBlock("card",{text:"Your team. Your identity.\nCreate a page that feels like your team instead of another identical template."})];
-selected=blocks[1].id;render();pushHistory();
+selected=blocks[1].id;render();pushHistory();startStatsPreview();
 })();
 </script>
 </body>
