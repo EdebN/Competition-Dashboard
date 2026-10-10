@@ -15,7 +15,7 @@
   <div class="brand"><div class="mark">C</div><div><span id="studioBrand">CANVAS STUDIO</span> <div style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.12em">FREEFORM PAGE BUILDER</div></div></div>
   <div class="top-actions">
     <button id="undoBtn" title="Undo">↶ Undo</button><button id="redoBtn" title="Redo">↷ Redo</button>
-    <button id="saveBtn">Save draft</button><button id="loadBtn">Load draft</button>
+    <button id="saveBtn">Save draft</button><button id="loadBtn">Load draft</button><button id="publishTeamPageBtn" class="primary" title="Publish this design to the live team page">Update team page</button>
     <button id="importBtn">Import JSON</button><button id="exportJsonBtn">Export JSON</button><button id="exportHtmlBtn" class="primary">Export HTML ↗</button>
   </div>
 </header>
@@ -233,6 +233,24 @@ function studioSessionToken(){return sessionStorage.getItem("team-editor-session
 function sharedDesignRequest(action,extra={}){return new Promise((resolve,reject)=>{if(!validStudioTeam||!studioSessionToken()){reject(new Error("Sign in to your team editor again to use shared storage."));return;}const callback="studioApi_"+Date.now()+"_"+Math.floor(Math.random()*1e6);const script=document.createElement("script");const url=new URL(STUDIO_API);url.searchParams.set("action",action);url.searchParams.set("teamId",validStudioTeam);url.searchParams.set("sessionToken",studioSessionToken());url.searchParams.set("callback",callback);url.searchParams.set("_",Date.now());Object.entries(extra).forEach(([k,v])=>url.searchParams.set(k,String(v)));window[callback]=data=>{delete window[callback];script.remove();resolve(data);};script.onerror=()=>{delete window[callback];script.remove();reject(new Error("Could not contact shared storage. The Apps Script update may not be deployed yet."));};script.src=url.toString();document.head.appendChild(script);});}
 async function saveSharedDesign(){const design=JSON.parse(snapshot());const payload={action:"saveTeamPageDesign",teamId:validStudioTeam,sessionToken:studioSessionToken(),design};const response=await fetch(STUDIO_API,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(payload)});await new Promise(resolve=>setTimeout(resolve,900));const result=await sharedDesignRequest("getTeamPageDesign");if(!result||!result.ok||JSON.stringify(result.design)!==JSON.stringify(design))throw new Error(result&&result.error||"Shared save could not be verified.");}
 $("saveBtn").onclick=async()=>{try{const current=snapshot();localStorage.setItem(studioDraftKey,current);if(validStudioTeam){$("saveBtn").disabled=true;$("saveBtn").textContent="Saving…";try{await saveSharedDesign();toast("Draft saved to the shared competition sheet.");}catch(e){toast("Saved in this browser only: "+e.message);}finally{$("saveBtn").disabled=false;$("saveBtn").textContent="Save draft";}}else toast("Draft saved in this browser.");}catch(e){toast("Draft too large for browser storage. Export JSON instead.");}};
+const publishButton=$("publishTeamPageBtn");
+if(!validStudioTeam){publishButton.disabled=true;publishButton.title="Open the Studio from your team's editor to publish.";}
+publishButton.onclick=async()=>{
+ if(!validStudioTeam){toast("Open the Studio from your team's editor to publish.");return;}
+ if(!confirm("Update the live Team "+validStudioTeam+" page with the design currently on this canvas? The original page will be replaced for this team."))return;
+ const design=JSON.parse(snapshot());
+ publishButton.disabled=true;publishButton.textContent="Publishing…";
+ try{
+  localStorage.setItem(studioDraftKey,snapshot());
+  await saveSharedDesign();
+  await fetch(STUDIO_API,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({action:"publishTeamPage",teamId:validStudioTeam,sessionToken:studioSessionToken(),design})});
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  const result=await sharedDesignRequest("getPublishedTeamPage");
+  if(!result||!result.ok||JSON.stringify(result.design)!==JSON.stringify(design))throw new Error(result&&result.error||"The published page could not be verified. Check that the Apps Script deployment is updated.");
+  toast("Team "+validStudioTeam+" page updated. The public page may take a minute to refresh.");
+ }catch(error){toast("Could not update the live page: "+error.message);}
+ finally{publishButton.disabled=false;publishButton.textContent="Update team page";}
+};
 $("loadBtn").onclick=async()=>{if(validStudioTeam){$("loadBtn").disabled=true;$("loadBtn").textContent="Loading…";try{const result=await sharedDesignRequest("getTeamPageDesign");if(result&&result.ok&&result.design){restore(JSON.stringify(result.design));pushHistory();localStorage.setItem(studioDraftKey,snapshot());toast("Shared Team "+validStudioTeam+" draft loaded.");return;}}catch(e){toast("Shared load unavailable; checking this browser.");}finally{$("loadBtn").disabled=false;$("loadBtn").textContent="Load draft";}}const saved=localStorage.getItem(studioDraftKey);if(!saved){toast("No saved draft found.");return;}try{restore(saved);pushHistory();toast("Browser draft loaded.");}catch(e){toast("Could not load that draft.");}};
 const requestModal=$("requestFeatureModal");$("requestFeatureBtn").onclick=()=>{requestModal.classList.add("open");$("featureRequestText").focus();};$("cancelFeatureRequest").onclick=()=>requestModal.classList.remove("open");requestModal.addEventListener("click",e=>{if(e.target===requestModal)requestModal.classList.remove("open");});document.addEventListener("keydown",e=>{if(e.key==="Escape")requestModal.classList.remove("open");});$("requestFeatureForm").addEventListener("submit",async e=>{e.preventDefault();const request=$("featureRequestText").value.trim();if(request.length<8){toast("Please add a little more detail.");return;}const submit=e.submitter;submit.disabled=true;submit.textContent="Sending…";try{await fetch(STUDIO_API,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({action:"submitFeatureRequest",teamId:validStudioTeam||"",request,page:"Team Page Studio"})});requestModal.classList.remove("open");$("featureRequestText").value="";toast("Feature request sent to the service.");}catch(err){toast("Could not send request. The API may need deploying.");}finally{submit.disabled=false;submit.textContent="Submit request";}});
 function download(name,data,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
