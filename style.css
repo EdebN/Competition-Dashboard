@@ -1779,5 +1779,8 @@ tr:last-child td {
   .page-nav { flex-wrap:wrap; }
 }
 
-.admin-portal-entry { margin-top:12px; }
-.admin-portal-entry .page-access-studio { width:100%; box-sizing:border-box; }
+
+
+/* Standalone Team Editor portal directly below the Admin controls card */
+.admin-portal-entry { margin: 14px 0 22px; }
+.admin-portal-entry .page-access-studio { display:flex; width:100%; min-height:46px; box-sizing:border-box; }
