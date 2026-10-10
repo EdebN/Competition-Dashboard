@@ -6,6 +6,8 @@ const TEAM_PAGE_DESIGNS_TAB = "Team Page Designs";
 const PUBLISHED_TEAM_PAGES_TAB = "Published Team Pages";
 const FEATURE_REQUESTS_TAB = "Feature Requests";
 const TEAM_EDITOR_PINS_TAB = "Team Editor PINs";
+const MATCH_POLLS_TAB = "Match Polls";
+const MATCH_POLL_HEADERS = ["Match ID", "Team ID", "Voter Token Hash", "Submitted At"];
 const TEAM_EDITOR_PIN_HEADERS = ["Team ID", "PIN", "Updated At"];
 const TEAM_IDS = ["A", "B", "C", "D", "E"];
 const TEAM_SETTINGS_HEADERS = [
@@ -43,8 +45,10 @@ function doGet(e) {
           properties.getProperty("SPREADSHEET_ID") &&
           properties.getProperty("ADMIN_TOKEN")
         ),
-        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin", "getTeamPageDesign", "saveTeamPageDesign", "getPublishedTeamPage", "publishTeamPage", "revertTeamPage", "submitFeatureRequest"]
+        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin", "getTeamPageDesign", "saveTeamPageDesign", "getPublishedTeamPage", "publishTeamPage", "revertTeamPage", "submitFeatureRequest", "getMatchPolls", "submitMatchVote"]
       };
+    } else if (action === "getMatchPolls") {
+      result = { ok: true, service: SERVICE_NAME, apiVersion: API_VERSION, action: action, polls: readMatchPolls_() };
     } else if (action === "getTeamSettings") {
       result = {
         ok: true,
@@ -118,7 +122,7 @@ function doPost(e) {
     });
   }
 
-  if (!["updateTeamSettings", "updateTeamEditorPin", "saveTeamPageDesign", "publishTeamPage", "revertTeamPage", "submitFeatureRequest"].includes(body.action)) {
+  if (!["updateTeamSettings", "updateTeamEditorPin", "saveTeamPageDesign", "publishTeamPage", "revertTeamPage", "submitFeatureRequest", "submitMatchVote"].includes(body.action)) {
     return jsonResponse_({
       ok: false,
       service: SERVICE_NAME,
@@ -127,6 +131,7 @@ function doPost(e) {
   }
 
   if (body.action === "submitFeatureRequest") return submitFeatureRequest_(body);
+  if (body.action === "submitMatchVote") return submitMatchVote_(body);
   if (body.action === "saveTeamPageDesign") return saveTeamPageDesign_(body);
   if (body.action === "publishTeamPage") return publishTeamPage_(body);
   if (body.action === "revertTeamPage") return revertTeamPage_(body);
@@ -489,7 +494,63 @@ function submitFeatureRequest_(body) {
   } finally { lock.releaseLock(); }
 }
 
-function getTeamSettingsSheet_() {
+
+function getMatchPollsSheet_() {
+  const id = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  if (!id) throw new Error("Missing SPREADSHEET_ID script property");
+  const ss = SpreadsheetApp.openById(id);
+  let sheet = ss.getSheetByName(MATCH_POLLS_TAB);
+  if (!sheet) sheet = ss.insertSheet(MATCH_POLLS_TAB);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, MATCH_POLL_HEADERS.length).setValues([MATCH_POLL_HEADERS]).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, MATCH_POLL_HEADERS.length);
+  } else {
+    const actual = sheet.getRange(1, 1, 1, MATCH_POLL_HEADERS.length).getDisplayValues()[0];
+    if (!MATCH_POLL_HEADERS.every(function (v, i) { return actual[i] === v; })) throw new Error("The Match Polls tab has unexpected headers.");
+  }
+  return sheet;
+}
+function hashVoterToken_(token) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token, Utilities.Charset.UTF_8);
+  return bytes.map(function (value) { return ("0" + (((value + 256) % 256).toString(16))).slice(-2); }).join("");
+}
+function readMatchPolls_() {
+  const sheet = getMatchPollsSheet_(), last = sheet.getLastRow(), counts = {};
+  if (last < 2) return counts;
+  sheet.getRange(2, 1, last - 1, 2).getDisplayValues().forEach(function (row) {
+    const matchId = String(row[0] || "").trim(), teamId = String(row[1] || "").trim().toUpperCase();
+    if (!/^\d{1,4}$/.test(matchId) || !TEAM_IDS.includes(teamId)) return;
+    if (!counts[matchId]) counts[matchId] = {};
+    counts[matchId][teamId] = (counts[matchId][teamId] || 0) + 1;
+  });
+  return counts;
+}
+function submitMatchVote_(body) {
+  const matchId = String(body.matchId || "").trim(), teamId = String(body.teamId || "").trim().toUpperCase();
+  const voterToken = String(body.voterToken || "").trim();
+  if (!/^\d{1,4}$/.test(matchId) || Number(matchId) < 1 || !TEAM_IDS.includes(teamId))
+    return jsonResponse_({ ok: false, error: "Invalid match or team." });
+  if (!/^[a-f0-9-]{32,80}$/i.test(voterToken))
+    return jsonResponse_({ ok: false, error: "A valid voter token is required." });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return jsonResponse_({ ok: false, error: "Poll busy. Try again." });
+  try {
+    const sheet = getMatchPollsSheet_(), last = sheet.getLastRow(), tokenHash = hashVoterToken_(voterToken);
+    if (last >= 2) {
+      const rows = sheet.getRange(2, 1, last - 1, 3).getDisplayValues();
+      if (rows.some(function (row) { return String(row[0]).trim() === matchId && String(row[2]).trim() === tokenHash; }))
+        return jsonResponse_({ ok: false, error: "This browser has already voted in this match." });
+    }
+    if (last > 10000) return jsonResponse_({ ok: false, error: "Poll storage is full." });
+    sheet.getRange(last + 1, 1, 1, MATCH_POLL_HEADERS.length).setValues([[matchId, teamId, tokenHash, new Date()]]);
+    return jsonResponse_({ ok: true, action: "submitMatchVote", saved: true, matchId: Number(matchId) });
+  } catch (error) {
+    console.error(error);
+    return jsonResponse_({ ok: false, error: "Could not save the match vote." });
+  } finally { lock.releaseLock(); }
+}
+\nfunction getTeamSettingsSheet_() {
   const properties = PropertiesService.getScriptProperties();
   const spreadsheetId = properties.getProperty("SPREADSHEET_ID");
 
