@@ -593,16 +593,37 @@ function expectedScore(
   );
 }
 
+/*
+ * Logarithmic margin-of-victory adjustment, adapted from the
+ * FiveThirtyEight NBA Elo approach.
+ *
+ * Larger margins matter with diminishing returns. Wins by a favourite
+ * receive a smaller margin multiplier; an upset win receives a larger one.
+ * Draws use a neutral multiplier of 1 so they still produce an Elo update.
+ */
 function marginFactor(
   scoreA,
-  scoreB
+  scoreB,
+  ratingA,
+  ratingB
 ) {
+  if (scoreA === scoreB) {
+    return 1;
+  }
 
-  return Math.log(
-    Math.abs(
-      scoreA - scoreB
-    ) + 1
-  );
+  const scoreMargin = Math.abs(scoreA - scoreB);
+  const winnerRating = scoreA > scoreB ? ratingA : ratingB;
+  const loserRating = scoreA > scoreB ? ratingB : ratingA;
+
+  const logarithmicMargin = Math.log(scoreMargin + 1);
+  const favouriteCorrection =
+    2.2 /
+    (
+      2.2 +
+      0.001 * (winnerRating - loserRating)
+    );
+
+  return logarithmicMargin * favouriteCorrection;
 }
 
 function actualScore(
@@ -644,6 +665,8 @@ function calculateElo() {
 
   const eloRows = [];
 
+  // Process matches in fixture order. Each result affects the ratings
+  // used to calculate expectations for later matches.
   getActiveRegularGames()
     .forEach(game => {
 
@@ -687,18 +710,22 @@ function calculateElo() {
             preB
           );
 
-        margin =
-          marginFactor(
-            scoreA,
-            scoreB
-          );
-
         const actualA =
           actualScore(
             scoreA,
             scoreB
           );
 
+        margin =
+          marginFactor(
+            scoreA,
+            scoreB,
+            preA,
+            preB
+          );
+
+        // Both teams' changes are calculated from the same pre-match
+        // ratings and expected result. This keeps the update zero-sum.
         changeA =
           K *
           margin *
