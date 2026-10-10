@@ -2784,7 +2784,7 @@ function renderAdminPage() {
     </section>
 
 
-    <div class="admin-portal-entry"><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
+    
 
 
     <section class="card admin-card page-access-card">
@@ -2795,6 +2795,9 @@ function renderAdminPage() {
       
       <div id="pageAccessStatus" class="admin-info" role="status" aria-live="polite">This is the first UI pass. Demo PINs exist only in this page until we connect real access.</div>
     </section>
+
+
+    <div class="admin-portal-entry"><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
 
   `;
 
