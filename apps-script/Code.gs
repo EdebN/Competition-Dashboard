@@ -106,7 +106,7 @@ function doPost(e) {
     });
   }
 
-  if (body.action !== "updateTeamSettings") {
+  if (!["updateTeamSettings", "updateTeamEditorPin"].includes(body.action)) {
     return jsonResponse_({
       ok: false,
       service: SERVICE_NAME,
@@ -125,6 +125,34 @@ function doPost(e) {
       service: SERVICE_NAME,
       error: "Not authorised"
     });
+  }
+
+  if (body.action === "updateTeamEditorPin") {
+    const teamId = String(body.teamId || "").trim().toUpperCase();
+    const pin = String(body.pin || "").trim();
+    if (!TEAM_IDS.includes(teamId) || !/^\d{6}$/.test(pin)) {
+      return jsonResponse_({ ok: false, service: SERVICE_NAME, error: "A valid team ID and six-digit PIN are required." });
+    }
+    const pinLock = LockService.getScriptLock();
+    if (!pinLock.tryLock(5000)) return jsonResponse_({ ok: false, service: SERVICE_NAME, error: "Service busy. Try again." });
+    try {
+      const sheet = getTeamEditorPinsSheet_();
+      const lastRow = sheet.getLastRow();
+      const rows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, 3).getDisplayValues() : [];
+      let rowNumber = 0;
+      rows.forEach(function (row, index) {
+        if (String(row[0]).trim() === teamId) rowNumber = index + 2;
+      });
+      if (!rowNumber) rowNumber = Math.max(2, lastRow + 1);
+      sheet.getRange(rowNumber, 1, 1, 3).setNumberFormat("@");
+      sheet.getRange(rowNumber, 1, 1, 3).setValues([[teamId, pin, new Date().toISOString()]]);
+      return jsonResponse_({ ok: true, service: SERVICE_NAME, apiVersion: API_VERSION, action: body.action, saved: true, teamId: teamId });
+    } catch (error) {
+      console.error(error);
+      return jsonResponse_({ ok: false, service: SERVICE_NAME, error: "Could not save the Team Editor PIN." });
+    } finally {
+      pinLock.releaseLock();
+    }
   }
 
   let teams;
