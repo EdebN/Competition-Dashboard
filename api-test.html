@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community API Test · Competition Dashboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #080a0f;
+      color: #f4f7fb;
+      font: 15px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(760px, 100%); margin: 30px auto; }
+    h1 { margin: 0 0 8px; font-size: clamp(25px, 4vw, 34px); letter-spacing: -.03em; }
+    p { color: #a7b2c0; }
+    .card { margin-top: 18px; padding: 20px; border: 1px solid #202833; border-radius: 15px; background: #10141b; }
+    label { display: block; margin: 12px 0 6px; color: #a7b2c0; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    input {
+      width: 100%; padding: 12px; border: 1px solid #303b48; border-radius: 9px;
+      background: #080a0f; color: #f4f7fb; font: inherit;
+    }
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    button {
+      padding: 11px 14px; border: 1px solid #303b48; border-radius: 9px;
+      background: #1a2430; color: #f4f7fb; font: inherit; font-weight: 750; cursor: pointer;
+    }
+    button.primary { background: #2563eb; border-color: #2563eb; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .status { margin-top: 12px; padding: 12px; border-radius: 9px; background: #080a0f; color: #c8d2df; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 44px; }
+    .ok { color: #62e6a0; }
+    .error { color: #ff818b; }
+    .warning { border-left: 3px solid #fbbf24; padding-left: 12px; }
+    code { color: #c5d7ff; overflow-wrap: anywhere; }
+    small { color: #7e8b9b; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Community API connection test</h1>
+  <p>Temporary diagnostic page for the Competition Dashboard. It tests the separate community-data API without touching official fixtures or scores.</p>
+
+  <section class="card">
+    <strong>1. API endpoint</strong>
+    <label for="apiUrl">Apps Script Web app URL</label>
+    <input id="apiUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="url">
+    <div class="buttons">
+      <button id="readBtn" class="primary">Test read</button>
+      <button id="writeBtn">Send harmless write test</button>
+      <button id="verifyBtn">Read saved value</button>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite">Paste your deployed /exec URL, then choose Test read.</div>
+  </section>
+
+  <section class="card">
+    <strong>What this page tests</strong>
+    <p>Read requests use the test endpoint's JSONP response so the browser can read the result across origins. The write test sends only the fixed <code>{"action":"testWrite","value":"WRITE_TEST"}</code> marker. It cannot edit game scores or fixtures.</p>
+    <p class="warning">This is a temporary diagnostic page, not the production API or a security test. The endpoint should remain limited to test writes until we design and enforce the real permissions.</p>
+    <small>Expected successful read: service = competition-community-api, mode = test. After writing, value should be WRITE_TEST.</small>
+  </section>
+</main>
+
+<script>
+(() => {
+  const urlInput = document.getElementById("apiUrl");
+  const status = document.getElementById("status");
+  const buttons = [
+    document.getElementById("readBtn"),
+    document.getElementById("writeBtn"),
+    document.getElementById("verifyBtn")
+  ];
+
+  function setStatus(message, kind = "") {
+    status.className = "status " + kind;
+    status.textContent = message;
+  }
+
+  function getApiUrl() {
+    const raw = urlInput.value.trim();
+    if (!raw) throw new Error("Paste the deployed Apps Script URL first.");
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || !/script\.google\.com$/.test(url.hostname) ||
+        !url.pathname.includes("/macros/s/") || !url.pathname.endsWith("/exec")) {
+      throw new Error("Use the HTTPS Apps Script Web app URL ending in /exec.");
+    }
+    return url;
+  }
+
+  function setBusy(busy) {
+    buttons.forEach(button => button.disabled = busy);
+  }
+
+  function readApi() {
+    return new Promise((resolve, reject) => {
+      let url;
+      try {
+        url = getApiUrl();
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      const callbackName = "__communityApiTestCallback";
+      const oldScript = document.getElementById("apiJsonpScript");
+      if (oldScript) oldScript.remove();
+
+      let timeout = setTimeout(() => finish(new Error("Read timed out. Check the URL and deployment access.")), 12000);
+
+      function finish(error, data) {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        const script = document.getElementById("apiJsonpScript");
+        if (script) script.remove();
+        if (error) reject(error);
+        else resolve(data);
+      }
+
+      window[callbackName] = data => finish(null, data);
+      url.searchParams.set("callback", callbackName);
+      url.searchParams.set("testRead", String(Date.now()));
+
+      const script = document.createElement("script");
+      script.id = "apiJsonpScript";
+      script.src = url.toString();
+      script.onerror = () => finish(new Error("The browser couldn't load the API response. Check deployment access and the URL."));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function doRead(label) {
+    setBusy(true);
+    setStatus(label + "…");
+    try {
+      const data = await readApi();
+      if (!data || data.ok !== true) throw new Error("API returned an unexpected response: " + JSON.stringify(data));
+      setStatus(
+        label + " succeeded\n" +
+        "Service: " + (data.service || "(missing)") + "\n" +
+        "Mode: " + (data.mode || "(missing)") + "\n" +
+        "Last write: " + (data.lastWrite ?? "(none yet)") + "\n" +
+        "Saved value: " + (data.value ?? "(none yet)"),
+        "ok"
+      );
+    } catch (error) {
+      setStatus(label + " failed\n" + error.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  document.getElementById("readBtn").addEventListener("click", () => {
+    doRead("Read test");
+  });
+
+  document.getElementById("verifyBtn").addEventListener("click", () => {
+    doRead("Saved-value check");
+  });
+
+  document.getElementById("writeBtn").addEventListener("click", async () => {
+    setBusy(true);
+    setStatus("Sending the harmless test marker…");
+    try {
+      const url = getApiUrl();
+      await fetch(url.toString(), {
+        method: "POST",
+        mode: "no-cors",
+        body: JSON.stringify({
+          action: "testWrite",
+          value: "WRITE_TEST"
+        })
+      });
+
+      setStatus("The browser sent the write request. Checking whether it reached the sheet…");
+      await new Promise(resolve => setTimeout(resolve, 1800));
+      const data = await readApi();
+
+      if (data && data.ok === true && data.value === "WRITE_TEST") {
+        setStatus(
+          "SUCCESS: browser-to-API write and read-back both worked.\n" +
+          "Saved value: " + data.value + "\n" +
+          "Last write: " + (data.lastWrite ?? "(timestamp not returned)"),
+          "ok"
+        );
+      } else {
+        setStatus(
+          "The POST was sent, but the read-back did not show WRITE_TEST.\n" +
+          "Current API value: " + (data?.value ?? "(none)") + "\n" +
+          "This means the browser-to-API write path still needs investigation.",
+          "error"
+        );
+      }
+    } catch (error) {
+      setStatus("Write test failed\n" + error.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>
