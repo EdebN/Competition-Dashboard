@@ -15,7 +15,7 @@ const DEFAULT_GAMES_PER_TEAM = 16;
 
 const FINALS_COUNT = 4;
 
-const ADMIN_PIN = "298562";
+const COMMUNITY_API_URL = "https://script.google.com/macros/s/AKfycbylpjVCNRVk-uIVqB21SG7ZqPDO7ZYAqscLag1taJzUZJvtoJAHMJMoAU2FVRUqC1QB/exec";
 
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vT2tLmAB4OB6uWLeBeCSWLMarzK9RjelvVTJRGqsm94yVijiT25leyXnPWhJybPtoyMKUgfBL6tTzFe/pub?output=csv";
@@ -59,51 +59,236 @@ function setGamesPerTeam(value) {
    These names are display-only.
 ───────────────────────────────────── */
 
+let currentTeamSettings = TEAMS.map(team => ({
+  teamId: team.slice(-1),
+  displayName: team,
+  primaryColor: "",
+  secondaryColor: "",
+  logoUrl: "",
+  updatedAt: null
+}));
+
+let communitySettingsLoaded = false;
+let communitySettingsError = "";
+
 function getTeamNames() {
-  const defaults = {
-    "Team A": "Team A",
-    "Team B": "Team B",
-    "Team C": "Team C",
-    "Team D": "Team D",
-    "Team E": "Team E"
-  };
-
-  const saved = localStorage.getItem("ultimate_team_names");
-
-  if (!saved) return defaults;
-
-  try {
-    const parsed = JSON.parse(saved);
-
-    TEAMS.forEach(team => {
-      const value = String(parsed[team] ?? "").trim();
-      defaults[team] = value || team;
-    });
-
-    return defaults;
-  } catch {
-    return defaults;
-  }
-}
-
-function setTeamNames(names) {
-  const cleaned = {};
+  const names = {};
 
   TEAMS.forEach(team => {
-    const value = String(names[team] ?? "").trim();
-    cleaned[team] = value || team;
+    const teamId = team.slice(-1);
+    const setting = currentTeamSettings.find(item => item.teamId === teamId);
+    names[team] = setting?.displayName || team;
   });
 
-  localStorage.setItem(
-    "ultimate_team_names",
-    JSON.stringify(cleaned)
-  );
+  return names;
 }
 
 function getTeamDisplayName(team) {
   if (!team) return "";
   return getTeamNames()[team] || team;
 }
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[character]);
+}
+
+function normalizeCommunitySettings(response) {
+  if (!response || response.ok !== true || !Array.isArray(response.teams)) {
+    throw new Error("The API did not return a valid team-settings response.");
+  }
+
+  const byId = new Map();
+
+  response.teams.forEach(item => {
+    const teamId = String(item?.teamId || "").trim().toUpperCase();
+    if (!["A", "B", "C", "D", "E"].includes(teamId) || byId.has(teamId)) {
+      throw new Error("The API returned invalid or duplicate team IDs.");
+    }
+
+    const displayName = String(item.displayName || `Team ${teamId}`).trim();
+    if (!displayName || displayName.length > 30) {
+      throw new Error(`Team ${teamId} has an invalid display name.`);
+    }
+
+    byId.set(teamId, {
+      teamId,
+      displayName,
+      primaryColor: String(item.primaryColor || "").trim(),
+      secondaryColor: String(item.secondaryColor || "").trim(),
+      logoUrl: String(item.logoUrl || "").trim(),
+      updatedAt: item.updatedAt ? String(item.updatedAt) : null
+    });
+  });
+
+  if (byId.size !== 5) {
+    throw new Error("The API must return exactly five team records.");
+  }
+
+  return ["A", "B", "C", "D", "E"].map(teamId => byId.get(teamId));
+}
+
+function readCommunityApi(action) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(COMMUNITY_API_URL);
+    const callbackName = "__competitionCommunityCallback_" +
+      Date.now() + "_" + Math.random().toString(36).slice(2);
+    const script = document.createElement("script");
+    let finished = false;
+
+    const timeout = setTimeout(() => {
+      finish(new Error("The community API read timed out."));
+    }, 15000);
+
+    function finish(error, data) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      try { delete window[callbackName]; } catch {}
+      script.remove();
+      if (error) reject(error);
+      else resolve(data);
+    }
+
+    window[callbackName] = data => finish(null, data);
+    url.searchParams.set("action", action);
+    url.searchParams.set("callback", callbackName);
+    url.searchParams.set("_cacheBust", String(Date.now()));
+
+    script.async = true;
+    script.src = url.toString();
+    script.onerror = () => finish(new Error("The browser could not load the community API response."));
+    document.head.appendChild(script);
+  });
+}
+
+function postCommunitySettings(token, teams) {
+  return fetch(COMMUNITY_API_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=UTF-8" },
+    body: JSON.stringify({
+      action: "updateTeamSettings",
+      adminToken: token,
+      teams
+    })
+  });
+}
+
+function updateDashboardTeamNames() {
+  updateTeamNavNames();
+  calculate();
+  renderGames();
+  renderFinalsPage();
+
+  const status = document.getElementById("teamNamesStatus");
+  if (status && communitySettingsLoaded) {
+    status.textContent = "Connected to shared team settings. Changes are visible to all visitors.";
+    status.className = "admin-info";
+  }
+
+  if (currentPage === "admin" && adminUnlocked) {
+    const names = getTeamNames();
+    const inputIds = {
+      "Team A": "teamNameA",
+      "Team B": "teamNameB",
+      "Team C": "teamNameC",
+      "Team D": "teamNameD",
+      "Team E": "teamNameE"
+    };
+
+    TEAMS.forEach(team => {
+      const input = document.getElementById(inputIds[team]);
+      if (input && document.activeElement !== input) {
+        input.value = names[team];
+      }
+    });
+  }
+}
+
+async function loadCommunitySettings() {
+  try {
+    const response = await readCommunityApi("getTeamSettings");
+    currentTeamSettings = normalizeCommunitySettings(response);
+    communitySettingsLoaded = true;
+    communitySettingsError = "";
+    updateDashboardTeamNames();
+  } catch (error) {
+    communitySettingsLoaded = false;
+    communitySettingsError = error?.message || "Could not load shared team settings.";
+    console.error("Could not load shared team settings:", error);
+
+    const status = document.getElementById("teamNamesStatus");
+    if (status) {
+      status.textContent = "Shared settings unavailable. Team names are using defaults until the API reconnects.";
+      status.className = "admin-warning";
+    }
+  }
+}
+
+function delayCommunityApi(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function saveSharedTeamNames(names) {
+  if (!adminToken) {
+    throw new Error("Enter the admin token before saving.");
+  }
+
+  if (!communitySettingsLoaded) {
+    throw new Error("Shared team settings have not loaded. Check the API connection and try again.");
+  }
+
+  const cleanedNames = {};
+  TEAMS.forEach(team => {
+    const value = String(names[team] ?? "").trim();
+    if (!value || value.length > 30 || /[\u0000-\u001F\u007F]/.test(value)) {
+      throw new Error(`${team} must have a name of 1–30 characters.`);
+    }
+    cleanedNames[team] = value;
+  });
+
+  // Re-read first so the write preserves the latest non-name fields.
+  const beforeResponse = await readCommunityApi("getTeamSettings");
+  const before = normalizeCommunitySettings(beforeResponse);
+  const desired = before.map(setting => ({
+    ...setting,
+    displayName: cleanedNames[`Team ${setting.teamId}`]
+  }));
+
+  await postCommunitySettings(adminToken, desired);
+  await delayCommunityApi(1400);
+
+  const savedResponse = await readCommunityApi("getTeamSettings");
+  const saved = normalizeCommunitySettings(savedResponse);
+
+  const namesMatch = saved.every(setting =>
+    setting.displayName === cleanedNames[`Team ${setting.teamId}`]
+  );
+
+  const timestampChanged = saved.some((setting, index) =>
+    setting.updatedAt && setting.updatedAt !== before[index].updatedAt
+  );
+
+  if (!namesMatch) {
+    throw new Error("The saved names do not match your changes. The token may be incorrect, or the API rejected the update.");
+  }
+
+  if (!timestampChanged) {
+    throw new Error("The API did not confirm a new saved timestamp. Check the admin token and try again.");
+  }
+
+  currentTeamSettings = saved;
+  communitySettingsLoaded = true;
+  communitySettingsError = "";
+  updateDashboardTeamNames();
+}
+
 function updateTeamNavNames() {
   const names = getTeamNames();
 
@@ -825,7 +1010,7 @@ function renderLadder(
         </td>
 
         <td class="team-name">
-  ${getTeamDisplayName(team.team)}
+  ${escapeHTML(getTeamDisplayName(team.team))}
 </td>
 
         <td>${team.played}</td>
@@ -871,7 +1056,7 @@ function renderLadder(
                     <button
                       class="form-result ${cls}"
                       onclick="jumpToGame(${result.game})"
-                      title="Game ${result.game}: ${getTeamDisplayName(team.team)} vs ${getTeamDisplayName(result.opponent)}"
+                      title="Game ${result.game}: ${escapeHTML(getTeamDisplayName(team.team))} vs ${escapeHTML(getTeamDisplayName(result.opponent))}"
                     >
                       ${result.result}
                     </button>
@@ -1005,7 +1190,7 @@ number.textContent =
       matchup.innerHTML = `
 
         <span class="team-home">
-  ${getTeamDisplayName(game.home)}
+  ${escapeHTML(getTeamDisplayName(game.home))}
 </span>
 
 <span class="versus">
@@ -1013,7 +1198,7 @@ number.textContent =
 </span>
 
 <span class="team-away">
-  ${getTeamDisplayName(game.away)}
+  ${escapeHTML(getTeamDisplayName(game.away))}
 </span>
 
         <div
@@ -1053,7 +1238,7 @@ number.textContent =
     if (game.referee && activeRegular) {
       const refereeLabel = document.createElement("div");
       refereeLabel.className = "game-referee";
-      refereeLabel.textContent = `REFEREE: ${getTeamDisplayName(game.referee)}`;
+      refereeLabel.textContent = `REFEREE: ${getTeamDisplayName(game.referee)}`
       matchup.appendChild(refereeLabel);
     }
 
@@ -1334,7 +1519,7 @@ function renderEloTable(
         <td>${row.game}</td>
 
         <td class="team-name">
-  ${getTeamDisplayName(row.teamA)}
+  ${escapeHTML(getTeamDisplayName(row.teamA))}
 </td>
 
         <td>
@@ -1346,7 +1531,7 @@ function renderEloTable(
         </td>
 
         <td class="team-name">
-  ${getTeamDisplayName(row.teamB)}
+  ${escapeHTML(getTeamDisplayName(row.teamB))}
 </td>
 
         <td>
@@ -1693,7 +1878,7 @@ function renderFinalsPage() {
     <span class="bracket-seed">
       ${seed}
     </span>
-    ${displayTeam}
+    ${escapeHTML(displayTeam)}
   `;
 
 }
@@ -1772,7 +1957,7 @@ function renderFinalsPage() {
 
     return `
   <div class="bracket-result">
-    ${getTeamDisplayName(winner)} won
+    ${escapeHTML(getTeamDisplayName(winner))} won
   </div>
 `;
 
@@ -2129,84 +2314,41 @@ function renderAdminPage() {
 
 
   if (!adminUnlocked) {
-
     page.innerHTML = `
-
       <section class="card admin-card">
-
-        <div class="section-title">
-          ADMINISTRATION
-        </div>
-
-        <h2>
-          Admin access
-        </h2>
-
+        <div class="section-title">ADMINISTRATION</div>
+        <h2>Admin access</h2>
         <div class="admin-lock">
-
-          <label
-            class="admin-label"
-            for="adminPin"
-          >
-            ADMIN PIN
-          </label>
-
+          <label class="admin-label" for="adminTokenInput">API ADMIN TOKEN</label>
           <input
-            id="adminPin"
+            id="adminTokenInput"
             class="admin-input"
             type="password"
-            inputmode="numeric"
             autocomplete="off"
-            placeholder="Enter PIN"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="Enter your API admin token"
           >
-
-          <button
-            class="admin-button"
-            id="adminUnlock"
-          >
-            UNLOCK
-          </button>
-
-          <div
-            id="adminError"
-            class="admin-error"
-          ></div>
-
+          <button class="admin-button" id="adminUnlock">OPEN ADMIN SETTINGS</button>
+          <div id="adminError" class="admin-error" role="status" aria-live="polite"></div>
+          <div class="admin-info">
+            The token stays in this page's memory only and is never saved to browser storage or included in the website code. The server checks it when you save team names.
+          </div>
+          <div class="admin-info">
+            ${communitySettingsLoaded
+              ? "Shared team settings connected."
+              : communitySettingsError
+                ? "Shared settings could not be loaded. Check the API connection."
+                : "Connecting to shared team settings…"}
+          </div>
         </div>
-
       </section>
-
     `;
 
-
-    document
-      .getElementById(
-        "adminUnlock"
-      )
-      .addEventListener(
-        "click",
-        unlockAdmin
-      );
-
-
-    document
-      .getElementById(
-        "adminPin"
-      )
-      .addEventListener(
-        "keydown",
-        event => {
-
-          if (
-            event.key === "Enter"
-          ) {
-            unlockAdmin();
-          }
-
-        }
-      );
-
-
+    document.getElementById("adminUnlock").addEventListener("click", unlockAdmin);
+    document.getElementById("adminTokenInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") unlockAdmin();
+    });
     return;
   }
 
@@ -2275,7 +2417,7 @@ function renderAdminPage() {
                 class="admin-input team-name-input"
                 type="text"
                 maxlength="30"
-                value="${teamNames["Team A"]}"
+                value="${escapeHTML(teamNames["Team A"])}"
               >
 
             </div>
@@ -2292,7 +2434,7 @@ function renderAdminPage() {
                 class="admin-input team-name-input"
                 type="text"
                 maxlength="30"
-                value="${teamNames["Team B"]}"
+                value="${escapeHTML(teamNames["Team B"])}"
               >
 
             </div>
@@ -2309,7 +2451,7 @@ function renderAdminPage() {
                 class="admin-input team-name-input"
                 type="text"
                 maxlength="30"
-                value="${teamNames["Team C"]}"
+                value="${escapeHTML(teamNames["Team C"])}"
               >
 
             </div>
@@ -2326,7 +2468,7 @@ function renderAdminPage() {
                 class="admin-input team-name-input"
                 type="text"
                 maxlength="30"
-                value="${teamNames["Team D"]}"
+                value="${escapeHTML(teamNames["Team D"])}"
               >
 
             </div>
@@ -2340,7 +2482,7 @@ function renderAdminPage() {
                 class="admin-input team-name-input"
                 type="text"
                 maxlength="30"
-                value="${teamNames["Team E"]}"
+                value="${escapeHTML(teamNames["Team E"])}"
               >
             </div>
 
@@ -2348,11 +2490,16 @@ function renderAdminPage() {
 
 
           <div class="admin-info">
+            Team names are stored in the shared community database, so every visitor sees the same names.
+            Internal team IDs, fixtures, and official score data remain unchanged.
+          </div>
 
-            These names are displayed on the
-            dashboard only. The Google Sheet and
-            internal team IDs remain unchanged.
-
+          <div id="teamNamesStatus" class="admin-info" role="status" aria-live="polite">
+            ${communitySettingsLoaded
+              ? "Connected to shared team settings."
+              : communitySettingsError
+                ? "Shared settings unavailable: " + escapeHTML(communitySettingsError)
+                : "Loading shared team settings…"}
           </div>
 
 
@@ -2525,51 +2672,41 @@ function renderAdminPage() {
      SAVE TEAM NAMES
   ───────────────────────────── */
 
-  document
-    .getElementById(
-      "adminSaveNames"
-    )
-    .addEventListener(
-      "click",
-      () => {
+  document.getElementById("adminSaveNames").addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const status = document.getElementById("teamNamesStatus");
 
-        setTeamNames({
+    const names = {
+      "Team A": document.getElementById("teamNameA").value,
+      "Team B": document.getElementById("teamNameB").value,
+      "Team C": document.getElementById("teamNameC").value,
+      "Team D": document.getElementById("teamNameD").value,
+      "Team E": document.getElementById("teamNameE").value
+    };
 
-          "Team A":
-            document.getElementById(
-              "teamNameA"
-            ).value,
+    button.disabled = true;
+    if (status) {
+      status.className = "admin-info";
+      status.textContent = "Saving names to the shared database and verifying the saved values…";
+    }
 
-          "Team B":
-            document.getElementById(
-              "teamNameB"
-            ).value,
-
-          "Team C":
-            document.getElementById(
-              "teamNameC"
-            ).value,
-
-          "Team D":
-            document.getElementById(
-              "teamNameD"
-            ).value,
-
-          "Team E":
-            document.getElementById(
-              "teamNameE"
-            ).value
-
-        });
-
-
-        calculate();
-        renderGames();
-        renderFinalsPage();
-        renderAdminPage();
-
+    try {
+      await saveSharedTeamNames(names);
+      if (status) {
+        status.className = "admin-success";
+        status.textContent = "Saved and verified. All visitors will now see these team names.";
       }
-    );
+    } catch (error) {
+      console.error("Could not save shared team names:", error);
+      if (status) {
+        status.className = "admin-warning";
+        status.textContent = "Could not verify the shared save: " + (error?.message || "Unknown error");
+      }
+    } finally {
+      button.disabled = false;
+    }
+  });
+
 
 
   /* ─────────────────────────────
@@ -2609,8 +2746,8 @@ function renderAdminPage() {
       "click",
       () => {
 
-        adminUnlocked =
-          false;
+        adminUnlocked = false;
+        adminToken = "";
 
         renderAdminPage();
 
@@ -2619,42 +2756,20 @@ function renderAdminPage() {
 
 }
 function unlockAdmin() {
+  const input = document.getElementById("adminTokenInput");
+  const error = document.getElementById("adminError");
 
-  const input =
-    document.getElementById(
-      "adminPin"
-    );
-
-  const error =
-    document.getElementById(
-      "adminError"
-    );
-
-
-  if (
-    input.value ===
-    ADMIN_PIN
-  ) {
-
-    adminUnlocked =
-      true;
-
-    renderAdminPage();
-
+  if (!input || !input.value.trim()) {
+    if (error) error.textContent = "Enter your API admin token.";
+    if (input) input.focus();
+    return;
   }
 
-  else {
-
-    error.textContent =
-      "Incorrect PIN.";
-
-    input.value = "";
-
-    input.focus();
-
-  }
-
+  adminToken = input.value.trim();
+  adminUnlocked = true;
+  renderAdminPage();
 }
+
 /* =========================================================
    PAGE SYSTEM
 ========================================================= */
@@ -3081,7 +3196,7 @@ if (!container) {
             </span>
 
             <span class="team-form-opponent">
-  vs ${getTeamDisplayName(form.opponent)}
+  vs ${escapeHTML(getTeamDisplayName(form.opponent))}
 </span>
 
             <span class="team-form-score">
@@ -3104,7 +3219,7 @@ if (!container) {
   ? matches.map(match => {
 
       const opponent =
-  getTeamDisplayName(match.opponent);
+  escapeHTML(getTeamDisplayName(match.opponent));
       const teamScore = match.teamScore;
       const opponentScore = match.opponentScore;
 
@@ -3182,7 +3297,7 @@ if (!container) {
             </div>
 
             <div class="team-elo-opponent">
-  vs ${getTeamDisplayName(row.opponent)}
+  vs ${escapeHTML(getTeamDisplayName(row.opponent))}
 </div>
 
             <div class="team-elo-score">
@@ -3221,7 +3336,7 @@ if (!container) {
       </div>
 
       <h1 class="team-page-name">
-  ${getTeamDisplayName(team.team)}
+  ${escapeHTML(getTeamDisplayName(team.team))}
 </h1>
 
       <div class="team-page-subtitle">
@@ -3858,3 +3973,4 @@ function calculate() {
 
 renderAdminPage();
 loadScoresFromSheet();
+loadCommunitySettings();
