@@ -2467,7 +2467,7 @@ function renderAdminPage() {
           <button class="admin-button" id="adminUnlock">OPEN ADMIN SETTINGS</button>
           <div id="adminError" class="admin-error" role="status" aria-live="polite"></div>
           <div class="admin-info">
-            The token stays in this page's memory only and is never saved to browser storage or included in the website code. The server checks it when you save team names.
+            The token stays in this page's memory only and is never saved to browser storage or included in the website code. The server checks it when you save shared settings.
           </div>
           <div class="admin-info">
             ${communitySettingsLoaded
