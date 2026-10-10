@@ -15,7 +15,7 @@
   <div class="brand"><div class="mark">C</div><div><span id="studioBrand">CANVAS STUDIO</span> <div style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.12em">FREEFORM PAGE BUILDER</div></div></div>
   <div class="top-actions">
     <button id="undoBtn" title="Undo">↶ Undo</button><button id="redoBtn" title="Redo">↷ Redo</button>
-    <button id="saveBtn">Save draft</button><button id="loadBtn">Load draft</button><button id="publishTeamPageBtn" class="primary" title="Publish this design to the live team page">Update team page</button>
+    <button id="saveBtn">Save draft</button><button id="loadBtn">Load draft</button><button id="publishTeamPageBtn" class="primary" title="Publish this design to the live team page">Update team page</button><button id="revertTeamPageBtn" title="Restore the original built-in team page">Revert to default</button>
     <button id="importBtn">Import JSON</button><button id="exportJsonBtn">Export JSON</button><button id="exportHtmlBtn" class="primary">Export HTML ↗</button>
   </div>
 </header>
@@ -233,6 +233,25 @@ function studioSessionToken(){return sessionStorage.getItem("team-editor-session
 function sharedDesignRequest(action,extra={}){return new Promise((resolve,reject)=>{if(!validStudioTeam||!studioSessionToken()){reject(new Error("Sign in to your team editor again to use shared storage."));return;}const callback="studioApi_"+Date.now()+"_"+Math.floor(Math.random()*1e6);const script=document.createElement("script");const url=new URL(STUDIO_API);url.searchParams.set("action",action);url.searchParams.set("teamId",validStudioTeam);url.searchParams.set("sessionToken",studioSessionToken());url.searchParams.set("callback",callback);url.searchParams.set("_",Date.now());Object.entries(extra).forEach(([k,v])=>url.searchParams.set(k,String(v)));window[callback]=data=>{delete window[callback];script.remove();resolve(data);};script.onerror=()=>{delete window[callback];script.remove();reject(new Error("Could not contact shared storage. The Apps Script update may not be deployed yet."));};script.src=url.toString();document.head.appendChild(script);});}
 async function saveSharedDesign(){const design=JSON.parse(snapshot());const payload={action:"saveTeamPageDesign",teamId:validStudioTeam,sessionToken:studioSessionToken(),design};const response=await fetch(STUDIO_API,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(payload)});await new Promise(resolve=>setTimeout(resolve,900));const result=await sharedDesignRequest("getTeamPageDesign");if(!result||!result.ok||JSON.stringify(result.design)!==JSON.stringify(design))throw new Error(result&&result.error||"Shared save could not be verified.");}
 $("saveBtn").onclick=async()=>{try{const current=snapshot();localStorage.setItem(studioDraftKey,current);if(validStudioTeam){$("saveBtn").disabled=true;$("saveBtn").textContent="Saving…";try{await saveSharedDesign();toast("Draft saved to the shared competition sheet.");}catch(e){toast("Saved in this browser only: "+e.message);}finally{$("saveBtn").disabled=false;$("saveBtn").textContent="Save draft";}}else toast("Draft saved in this browser.");}catch(e){toast("Draft too large for browser storage. Export JSON instead.");}};
+const revertButton=$("revertTeamPageBtn");
+if(!validStudioTeam){revertButton.disabled=true;revertButton.title="Open the Studio from your team's editor to revert.";}
+revertButton.onclick=async()=>{
+ if(!validStudioTeam){toast("Open the Studio from your team's editor to revert.");return;}
+ if(!confirm("Are you absolutely sure you want to restore the ORIGINAL default page for Team "+validStudioTeam+"?"))return;
+ if(!confirm("This removes the published custom layout from the LIVE website. Your saved draft will remain. Continue?"))return;
+ if(!confirm("Final check: Team "+validStudioTeam+" will go back to the built-in page, not the Studio design. Revert it?"))return;
+ const typed=prompt("Type REVERT to confirm restoring the default page.");
+ if(typed!=="REVERT"){toast("Revert cancelled. Nothing changed.");return;}
+ revertButton.disabled=true;revertButton.textContent="Reverting…";
+ try{
+  await fetch(STUDIO_API,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({action:"revertTeamPage",teamId:validStudioTeam,sessionToken:studioSessionToken()})});
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  const result=await sharedDesignRequest("getPublishedTeamPage");
+  if(!result||!result.ok||result.design!==null)throw new Error(result&&result.error||"The default page could not be verified. Check that the Apps Script deployment is updated.");
+  toast("Team "+validStudioTeam+" restored to the original default page. Saved draft retained.");
+ }catch(error){toast("Could not restore the default page: "+error.message);}
+ finally{revertButton.disabled=false;revertButton.textContent="Revert to default";}
+};
 const publishButton=$("publishTeamPageBtn");
 if(!validStudioTeam){publishButton.disabled=true;publishButton.title="Open the Studio from your team's editor to publish.";}
 publishButton.onclick=async()=>{
