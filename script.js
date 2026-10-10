@@ -10,7 +10,7 @@ const START_ELO = 1000;
 
 // Glicko-2 settings. Ratings use the dashboard's 1000-point starting scale;
 // RD is rating uncertainty in the same displayed-point scale.
-const GLICKO_INITIAL_RD = 350;
+const GLICKO_INITIAL_RD = 150;
 const GLICKO_INITIAL_VOLATILITY = 0.06;
 const GLICKO_TAU = 0.5;
 const GLICKO_EPSILON = 0.000001;
