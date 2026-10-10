@@ -2965,23 +2965,40 @@ function renderAdminPage() {
     );
 
   document.querySelectorAll(".page-access-generate").forEach(button => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const teamId = button.dataset.team;
-      const pin = String(Math.floor(100000 + Math.random() * 900000));
+      const pin = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
       const pinDisplay = document.getElementById("pageAccessPin" + teamId);
-      const pinStoreKey = "team-editor-pins-v1";
-      let savedPins = {};
-      try { savedPins = JSON.parse(localStorage.getItem(pinStoreKey) || "{}") || {}; } catch {}
-      savedPins[teamId] = { pin, updatedAt: new Date().toISOString() };
-      try { localStorage.setItem(pinStoreKey, JSON.stringify(savedPins)); } catch {}
       const copyButton = document.querySelector('.page-access-copy[data-team="' + teamId + '"]');
       const status = document.getElementById("pageAccessStatus");
-      if (pinDisplay) pinDisplay.textContent = pin;
-      if (copyButton) { copyButton.disabled = false; copyButton.textContent = "COPY"; }
-      button.textContent = "REGENERATE PIN";
       const badge = button.closest(".page-access-team")?.querySelector(".page-access-status");
-      if (badge) { badge.textContent = "PIN READY"; badge.classList.add("is-demo"); }
-      if (status) status.textContent = "PIN created for Team " + teamId + ". It works on this browser only until shared PIN storage is connected."; 
+      if (!adminToken) {
+        if (status) status.textContent = "Unlock Admin before generating a PIN.";
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "SAVING…";
+      if (status) status.textContent = "Saving Team " + teamId + " PIN to the shared Google Sheet…";
+      try {
+        await postCommunityAction({ action: "updateTeamEditorPin", adminToken, teamId, pin });
+        let verified = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 700));
+          const result = await readCommunityApi("verifyTeamEditorPin", { pin });
+          if (result?.ok === true && result.teamId === teamId) { verified = true; break; }
+        }
+        if (!verified) throw new Error("The save could not be verified. Make sure the updated Apps Script is deployed.");
+        if (pinDisplay) pinDisplay.textContent = pin;
+        if (copyButton) { copyButton.disabled = false; copyButton.textContent = "COPY"; }
+        button.textContent = "REGENERATE PIN";
+        if (badge) { badge.textContent = "PIN READY"; badge.classList.add("is-demo"); }
+        if (status) status.textContent = "Team " + teamId + " PIN saved and verified in Google Sheets. Copy it now and share it with that team's manager.";
+      } catch (error) {
+        button.textContent = "TRY AGAIN";
+        if (status) status.textContent = "Could not save Team " + teamId + " PIN: " + (error?.message || "Unknown error");
+      } finally {
+        button.disabled = false;
+      }
     });
   });
 
@@ -2994,7 +3011,7 @@ function renderAdminPage() {
       try {
         await navigator.clipboard.writeText(pinDisplay.textContent.trim());
         button.textContent = "COPIED";
-        if (status) status.textContent = "PIN copied. Remember: this prototype stores PINs in this browser only."; 
+        if (status) status.textContent = "PIN copied. It is saved in the shared Google Sheet."; 
       } catch (error) {
         if (status) status.textContent = "Clipboard access was blocked. Select the PIN and copy it manually."; 
       }
