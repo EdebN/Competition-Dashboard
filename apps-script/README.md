@@ -35,6 +35,8 @@ The public endpoint must be readable without signing in. Therefore, only public 
 
 - `GET /exec?action=health`
 - `GET /exec?action=getTeamSettings`
+- `GET /exec?action=getTeamEditorPinStatus` returns which teams have a PIN set, never the PIN itself.
+- `GET /exec?action=verifyTeamEditorPin&pin=123456` verifies one PIN and returns its team ID only on success.
 - Add `&callback=someFunction` to a read URL for JSONP from GitHub Pages.
 
 A successful settings response includes five records with `teamId`, `displayName`, `primaryColor`, `secondaryColor`, `logoUrl`, and `updatedAt`.
@@ -47,7 +49,9 @@ POST JSON using the `text/plain;charset=UTF-8` content type from a browser's `no
 - `adminToken`: the secret entered by the administrator for this session
 - `teams`: exactly one validated settings record for each team ID A–E
 
-The server validates names (1–30 characters), optional hex colours, optional HTTPS logo URLs, and unique team IDs. It writes only the **Team Settings** tab. For a cross-origin browser request using `no-cors`, JavaScript cannot read the POST response, so the client must follow it with a public GET and verify the saved values.
+The Admin page can also POST `action: "updateTeamEditorPin"` with `adminToken`, `teamId` (A–E), and a six-digit `pin`. This creates/updates the private **Team Editor PINs** tab with columns `Team ID`, `PIN`, and `Updated At`. The public status endpoint never returns PIN values. The PINs are plain text in the private spreadsheet, so keep that spreadsheet private. Repeated failed verification attempts are rate-limited.
+
+The server validates names (1–30 characters), optional hex colours, optional HTTPS logo URLs, and unique team IDs. Team settings writes affect only the **Team Settings** tab; PIN writes affect only **Team Editor PINs**. For a cross-origin browser request using `no-cors`, JavaScript cannot read the POST response, so the client must follow it with a public GET and verify the saved values.
 
 **Never hardcode the admin token in `script.js` or another public website file.** The token should be entered into a protected admin interface at runtime and kept only in memory for that page session. Anyone who can see the request while it is being made can see the bearer token, so use a private admin device and do not share it.
 
@@ -55,4 +59,4 @@ The server validates names (1–30 characters), optional hex colours, optional H
 
 The existing `api-test.html` page tests the old `testWrite` action. After deploying this new API, that old test-write action is intentionally no longer accepted, so the old diagnostic write test will fail. That is expected. The production API should be verified with read-only health/settings requests first, then with the new validated update operation using the private token.
 
-Do not connect the dashboard's team-name editor until the production deployment is configured and the settings response has been checked. The current client-side PIN in `script.js` is visible to every visitor and is not server-side authentication.
+Do not connect the dashboard's team-name editor until the production deployment is configured and the settings response has been checked. Team Editor PINs are verified by the Apps Script API and stored in the private spreadsheet. A six-digit PIN is convenient but should not be treated as a high-security password.
