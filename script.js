@@ -127,7 +127,7 @@ function normalizeCommunitySettings(response) {
   return ["A", "B", "C", "D", "E"].map(teamId => byId.get(teamId));
 }
 
-function readCommunityApi(action) {
+function readCommunityApi(action, extraParams = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(COMMUNITY_API_URL);
     const callbackName = "__competitionCommunityCallback_" +
@@ -151,6 +151,7 @@ function readCommunityApi(action) {
 
     window[callbackName] = data => finish(null, data);
     url.searchParams.set("action", action);
+    Object.entries(extraParams).forEach(([key, value]) => url.searchParams.set(key, String(value)));
     url.searchParams.set("callback", callbackName);
     url.searchParams.set("_cacheBust", String(Date.now()));
 
@@ -2791,10 +2792,10 @@ function renderAdminPage() {
     <section class="card admin-card page-access-card">
       <div class="section-title">TEAM CONTENT</div>
       <div class="page-access-heading"><div><h2>Page Editor Access</h2><p class="page-access-intro">Give each team’s social manager access to their own page. They can build the look, write updates and manage photos without touching competition settings.</p></div><div class="page-access-mark" aria-hidden="true">✦</div></div>
-      <div class="page-access-notice"><span class="page-access-notice-dot"></span><div><strong>Editor access preview</strong><br>These are temporary demo PINs only. They are not saved and do not unlock editing yet.</div></div>
+      <div class="page-access-notice"><span class="page-access-notice-dot"></span><div><strong>Shared Team Editor access</strong><br>PINs are saved to the private Google Sheet and work across devices.</div></div>
       <div class="page-access-grid" id="pageAccessTeams"></div>
       
-      <div id="pageAccessStatus" class="admin-info" role="status" aria-live="polite">This is the first UI pass. Demo PINs exist only in this page until we connect real access.</div>
+      <div id="pageAccessStatus" class="admin-info" role="status" aria-live="polite">Loading saved PIN status from the shared Google Sheet…</div>
     </section>
 
 
