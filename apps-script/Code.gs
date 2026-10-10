@@ -252,6 +252,60 @@ function readTeamSettings_() {
   });
 }
 
+function getTeamEditorPinsSheet_() {
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  if (!spreadsheetId) throw new Error("Missing SPREADSHEET_ID script property");
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  let sheet = spreadsheet.getSheetByName(TEAM_EDITOR_PINS_TAB);
+  if (!sheet) sheet = spreadsheet.insertSheet(TEAM_EDITOR_PINS_TAB);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, TEAM_EDITOR_PIN_HEADERS.length).setValues([TEAM_EDITOR_PIN_HEADERS]);
+    sheet.getRange(1, 1, 1, TEAM_EDITOR_PIN_HEADERS.length).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, TEAM_EDITOR_PIN_HEADERS.length);
+  } else {
+    const headers = sheet.getRange(1, 1, 1, TEAM_EDITOR_PIN_HEADERS.length).getDisplayValues()[0];
+    if (!TEAM_EDITOR_PIN_HEADERS.every(function (value, index) { return headers[index] === value; })) {
+      throw new Error("The Team Editor PINs tab has unexpected headers. No data was changed.");
+    }
+  }
+  return sheet;
+}
+
+function readTeamEditorPinStatus_() {
+  const sheet = getTeamEditorPinsSheet_();
+  const lastRow = sheet.getLastRow();
+  const rows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, 3).getDisplayValues() : [];
+  const configured = {};
+  rows.forEach(function (row) {
+    const teamId = String(row[0] || "").trim().toUpperCase();
+    if (TEAM_IDS.includes(teamId) && /^\d{6}$/.test(String(row[1] || "").trim())) configured[teamId] = true;
+  });
+  return TEAM_IDS.map(function (teamId) { return { teamId: teamId, configured: Boolean(configured[teamId]) }; });
+}
+
+function verifyTeamEditorPin_(input) {
+  const pin = String(input || "").trim();
+  if (!/^\d{6}$/.test(pin)) return { ok: false, service: SERVICE_NAME, apiVersion: API_VERSION, error: "Invalid PIN." };
+  const cache = CacheService.getScriptCache();
+  const attemptsKey = "teamEditorPinFailures";
+  const failures = Number(cache.get(attemptsKey) || 0);
+  if (failures >= 30) return { ok: false, service: SERVICE_NAME, apiVersion: API_VERSION, error: "Too many attempts. Wait one minute and try again." };
+  const sheet = getTeamEditorPinsSheet_();
+  const lastRow = sheet.getLastRow();
+  const rows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, 2).getDisplayValues() : [];
+  for (let i = 0; i < rows.length; i++) {
+    const teamId = String(rows[i][0] || "").trim().toUpperCase();
+    const savedPin = String(rows[i][1] || "").trim();
+    if (TEAM_IDS.includes(teamId) && savedPin === pin) {
+      cache.remove(attemptsKey);
+      return { ok: true, service: SERVICE_NAME, apiVersion: API_VERSION, action: "verifyTeamEditorPin", teamId: teamId };
+    }
+  }
+  cache.put(attemptsKey, String(failures + 1), 60);
+  return { ok: false, service: SERVICE_NAME, apiVersion: API_VERSION, error: "Invalid PIN." };
+}
+
 function getTeamSettingsSheet_() {
   const properties = PropertiesService.getScriptProperties();
   const spreadsheetId = properties.getProperty("SPREADSHEET_ID");
