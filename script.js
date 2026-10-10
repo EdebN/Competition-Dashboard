@@ -2810,7 +2810,7 @@ function renderAdminPage() {
   try {
     const savedPins = JSON.parse(localStorage.getItem("team-editor-pins-v1") || "{}") || {};
     Object.entries(savedPins).forEach(([teamId, entry]) => {
-      if (!["A", "B", "C", "D", "E"].includes(teamId) || !/^\\d{6}$/.test(String(entry?.pin || ""))) return;
+      if (!["A", "B", "C", "D", "E"].includes(teamId) || !/^\d{6}$/.test(String(entry?.pin || ""))) return;
       const pinDisplay = document.getElementById("pageAccessPin" + teamId);
       const card = pinDisplay?.closest(".page-access-team");
       const badge = card?.querySelector(".page-access-status");
