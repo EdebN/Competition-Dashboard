@@ -1778,3 +1778,6 @@ tr:last-child td {
 @media (max-width: 900px) {
   .page-nav { flex-wrap:wrap; }
 }
+
+.admin-portal-entry { margin-top:12px; }
+.admin-portal-entry .page-access-studio { width:100%; box-sizing:border-box; }
