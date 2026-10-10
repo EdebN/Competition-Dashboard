@@ -2301,6 +2301,7 @@ function renderFinalsPage() {
   `;
 
 }
+let adminToken = "";
 let adminUnlocked = false;
 function renderAdminPage() {
 
