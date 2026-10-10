@@ -29,12 +29,15 @@ The script creates a dedicated **Team Settings** tab when the public read endpoi
 
 The public endpoint must be readable without signing in. Therefore, only public team display settings are returned by GET. Never put private information in the Team Settings tab.
 
+The Team Page Studio also supports team-authenticated shared drafts and feature requests. A successful PIN check issues a short-lived (6-hour) session token in the browser session. The token permits reads/writes only for that team. Drafts are stored in the private **Team Page Designs** tab; feature suggestions are appended to **Feature Requests**. Shared design JSON is capped at 45,000 characters, so use hosted image URLs rather than embedded uploads for shared drafts. This saves drafts centrally but does not yet publish their layouts to the public team page.
+
 ## 3. API contract
 
 ### Public read
 
 - `GET /exec?action=health`
 - `GET /exec?action=getTeamSettings`
+- `GET /exec?action=getTeamPageDesign&teamId=A&sessionToken=...&callback=...` (valid team session required)
 - `GET /exec?action=getTeamEditorPinStatus` returns which teams have a PIN set, never the PIN itself.
 - `GET /exec?action=verifyTeamEditorPin&pin=123456` verifies one PIN and returns its team ID only on success.
 - Add `&callback=someFunction` to a read URL for JSONP from GitHub Pages.
@@ -48,6 +51,8 @@ POST JSON using the `text/plain;charset=UTF-8` content type from a browser's `no
 - `action: "updateTeamSettings"`
 - `adminToken`: the secret entered by the administrator for this session
 - `teams`: exactly one validated settings record for each team ID A–E
+
+Team Studio can POST `action: "saveTeamPageDesign"` with `teamId`, `sessionToken`, and a `design` object after a valid team PIN login. It can also POST `action: "submitFeatureRequest"` with a short `request` and optional `teamId`; requests are stored in the private Feature Requests tab. These two actions do not use the admin token; the save action requires a team-specific session token.
 
 The Admin page can also POST `action: "updateTeamEditorPin"` with `adminToken`, `teamId` (A–E), and a six-digit `pin`. This creates/updates the private **Team Editor PINs** tab with columns `Team ID`, `PIN`, and `Updated At`. The public status endpoint never returns PIN values. The PINs are plain text in the private spreadsheet, so keep that spreadsheet private. Repeated failed verification attempts are rate-limited.
 
