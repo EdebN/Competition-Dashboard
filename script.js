@@ -2776,12 +2776,15 @@ function renderAdminPage() {
         </button>
 
 
-        <div class="admin-portal-entry"><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
+        
 
 
       </div>
 
     </section>
+
+
+    <div class="admin-portal-entry"><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
 
 
     <section class="card admin-card page-access-card">
