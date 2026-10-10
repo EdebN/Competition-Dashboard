@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Canvas Studio</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0e14;--panel:#111722;--panel2:#171f2d;--line:#273247;--text:#edf2fa;--muted:#8e9bb0;--accent:#8b7cff;--accent2:#55d6be}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer;color:var(--text);background:#202a3a;border:1px solid #344157;border-radius:9px;padding:9px 11px}button:hover{background:#2a3650}button:disabled{opacity:.35;cursor:not-allowed}.app{min-height:100vh;display:grid;grid-template-rows:64px 1fr}.top{display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--line);background:#0e131c;gap:14px}.brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:.02em}.mark{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#0b0e14;font-weight:900}.top-actions{display:flex;gap:7px;flex-wrap:wrap}.primary{background:var(--accent);border-color:var(--accent);color:#fff}.workspace{display:grid;grid-template-columns:210px minmax(300px,1fr) 260px;min-height:calc(100vh - 64px)}.sidebar{padding:16px 13px;background:var(--panel);border-right:1px solid var(--line);min-width:0}.right{border-right:0;border-left:1px solid var(--line)}.eyebrow{font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.13em;text-transform:uppercase;margin:4px 0 12px}.toolgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tool{min-height:72px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;text-align:left;padding:10px;background:var(--panel2)}.tool span:first-child{font-size:20px;color:var(--accent2)}.tool small{color:#c5cede}.hint{color:var(--muted);font-size:12px;margin-top:15px}.stage{min-width:0;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 10%,#1a2233 0,transparent 58%)}.stagebar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #1f2939;color:var(--muted);gap:8px}.stagebar select{background:var(--panel);color:var(--text);border:1px solid var(--line);padding:7px;border-radius:8px}.viewport{padding:30px;overflow:auto;flex:1;display:flex;justify-content:center;align-items:flex-start}.page{width:100%;max-width:900px;min-height:700px;background:#f5f7fb;color:#182033;border-radius:12px;padding:30px;box-shadow:0 20px 70px #0007;transition:width .2s}.page.mobile{max-width:390px}.page.tablet{max-width:720px}.block{position:relative;margin:0 0 14px;min-width:24px;overflow-wrap:anywhere;cursor:grab;outline:1px solid transparent;outline-offset:3px;transition:outline-color .12s}.block:hover{outline-color:#8b7cff66}.block.selected{outline:2px solid var(--accent);outline-offset:4px}.block.dragging{opacity:.35}.block.drop-target{box-shadow:0 -3px 0 var(--accent)}.block h1,.block h2,.block h3,.block p{margin:0}.block img{display:block;max-width:100%;height:auto;object-fit:cover}.block button{pointer-events:none}.block .badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e8e5ff;color:#5547b8;font-size:12px;font-weight:700}.block .placeholder{min-height:150px;border:2px dashed #9ba7bd;border-radius:10px;display:grid;place-items:center;color:#78849b;padding:20px;text-align:center}.block .divider{height:2px;background:#d7dce5;width:100%}.block .stat{padding:18px;border-radius:12px;background:#fff;border:1px solid #e0e5ef}.block .stat strong{display:block;font-size:28px}.empty{text-align:center;padding:80px 20px;color:#667085;border:2px dashed #cbd3e1;border-radius:12px}.empty strong{display:block;font-size:20px;color:#28334a;margin-bottom:8px}.field{display:flex;flex-direction:column;gap:5px;margin:0 0 13px}.field label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}.field input,.field textarea,.field select{width:100%;background:#0d131d;color:var(--text);border:1px solid #344157;border-radius:8px;padding:9px}.field textarea{resize:vertical;min-height:74px}.field input[type=color]{height:38px;padding:3px}.field input[type=range]{padding:0}.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}.inspector-empty{color:var(--muted);font-size:12px;line-height:1.7}.sectionline{border:0;border-top:1px solid var(--line);margin:17px 0}.danger{color:#ff9d9d}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#edf2fa;color:#10151f;padding:10px 15px;border-radius:10px;box-shadow:0 8px 28px #0007;opacity:0;pointer-events:none;transition:opacity .2s;z-index:10}.toast.show{opacity:1}.file{display:none}.minirow{display:flex;gap:7px}.minirow button{flex:1}.muted{color:var(--muted)}@media(max-width:980px){.workspace{grid-template-columns:175px minmax(260px,1fr)}.right{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:20px}.viewport{padding:18px}.page{padding:20px}}@media(max-width:600px){.app{grid-template-rows:auto 1fr}.top{padding:12px;align-items:flex-start;flex-direction:column}.workspace{grid-template-columns:1fr}.sidebar{border-right:0;border-bottom:1px solid var(--line)}.toolgrid{grid-template-columns:repeat(3,1fr)}.tool{min-height:60px}.workspace .stage{min-height:600px}.right{display:block}.viewport{padding:12px}.page{padding:16px}.stagebar{padding:0 10px}.top-actions button{padding:7px 8px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <div class="brand"><div class="mark">C</div><div>CANVAS STUDIO <div style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.12em">FREEFORM PAGE BUILDER</div></div></div>
+  <div class="top-actions">
+    <button id="undoBtn" title="Undo">↶ Undo</button><button id="redoBtn" title="Redo">↷ Redo</button>
+    <button id="saveBtn">Save draft</button><button id="loadBtn">Load draft</button>
+    <button id="importBtn">Import JSON</button><button id="exportJsonBtn">Export JSON</button><button id="exportHtmlBtn" class="primary">Export HTML ↗</button>
+  </div>
+</header>
+<div class="workspace">
+<aside class="sidebar">
+  <div class="eyebrow">Add anything</div>
+  <div class="toolgrid">
+    <button class="tool" data-add="heading"><span>H</span><small>Heading</small></button>
+    <button class="tool" data-add="text"><span>¶</span><small>Text</small></button>
+    <button class="tool" data-add="image"><span>▧</span><small>Image</small></button>
+    <button class="tool" data-add="button"><span>▰</span><small>Button</small></button>
+    <button class="tool" data-add="card"><span>▣</span><small>Card</small></button>
+    <button class="tool" data-add="stat"><span>↗</span><small>Stat</small></button>
+    <button class="tool" data-add="divider"><span>━</span><small>Divider</small></button>
+    <button class="tool" data-add="spacer"><span>↕</span><small>Spacer</small></button>
+    <button class="tool" data-add="badge"><span>✳</span><small>Badge</small></button>
+    <button class="tool" data-add="quote"><span>❝</span><small>Quote</small></button>
+  </div>
+  <div class="hint">Select a block to edit it. Drag blocks to reorder. Upload images from your device or paste an image URL.</div>
+  <hr class="sectionline">
+  <div class="eyebrow">Page settings</div>
+  <div class="field"><label for="pageTitle">Page title</label><input id="pageTitle" value="My page"></div>
+  <div class="field"><label for="pageBg">Canvas background</label><input id="pageBg" type="color" value="#f5f7fb"></div>
+  <div class="field"><label for="pagePadding">Page padding</label><input id="pagePadding" type="range" min="8" max="64" value="30"></div>
+  <div class="field"><label for="pageWidth">Preview width</label><select id="pageWidth"><option value="desktop">Desktop</option><option value="tablet">Tablet</option><option value="mobile">Mobile</option></select></div>
+</aside>
+<section class="stage">
+  <div class="stagebar"><span><span style="color:var(--accent2)">●</span> Live canvas <span id="blockCount" class="muted"></span></span><span class="muted">Drag to reorder · Click to edit</span></div>
+  <div class="viewport"><main id="canvas" class="page" aria-label="Page canvas"></main></div>
+</section>
+<aside class="sidebar right">
+  <div><div class="eyebrow">Properties</div><div id="inspector" class="inspector-empty">Select any block on the canvas to customise its content, colours, size and alignment.</div></div>
+  <div><div class="eyebrow">Arrange</div><div class="minirow"><button id="upBtn" title="Move up">↑ Up</button><button id="downBtn" title="Move down">↓ Down</button></div><div class="minirow" style="margin-top:7px"><button id="duplicateBtn">Duplicate</button><button id="deleteBtn" class="danger">Delete</button></div><div class="hint">Every block is independent. Mix content types and styles however you like.</div></div>
+</aside>
+</div>
+</div>
+<input id="imageFile" class="file" type="file" accept="image/*">
+<input id="jsonFile" class="file" type="file" accept=".json,application/json">
+<div id="toast" class="toast" role="status"></div>
+<script>
+(() => {
+const $=id=>document.getElementById(id);
+const canvas=$("canvas"), inspector=$("inspector");
+let blocks=[], selected=null, seq=0, history=[], historyIndex=-1, suppressHistory=false, pendingImageTarget=null;
+const defaults={
+ heading:{text:"A bold headline",tag:"h1",fontSize:42,color:"#182033",bg:"transparent",align:"left",padding:8,radius:0,width:100},
+ text:{text:"Write something worth reading. Add your story, explain the idea, or share the details.",fontSize:17,color:"#344054",bg:"transparent",align:"left",padding:8,radius:0,width:100},
+ image:{text:"",src:"",alt:"Add an image",fontSize:16,color:"#182033",bg:"#e7ebf2",align:"center",padding:8,radius:12,width:100},
+ button:{text:"Explore more",fontSize:15,color:"#ffffff",bg:"#6254e8",align:"center",padding:13,radius:9,width:100},
+ card:{text:"Card title\nAdd a short description to this card. Use it for a team intro, announcement, or any other content.",fontSize:16,color:"#263247",bg:"#ffffff",align:"left",padding:22,radius:14,width:100},
+ stat:{text:"Games won\n12",fontSize:16,color:"#263247",bg:"#ffffff",align:"left",padding:20,radius:12,width:100},
+ divider:{text:"",fontSize:16,color:"#d7dce5",bg:"transparent",align:"left",padding:8,radius:0,width:100},
+ spacer:{text:"",fontSize:16,color:"#182033",bg:"transparent",align:"left",padding:8,radius:0,width:100,height:48},
+ badge:{text:"NEW SEASON",fontSize:12,color:"#5547b8",bg:"#e8e5ff",align:"left",padding:8,radius:99,width:100},
+ quote:{text:"“A team is more than a name on a ladder.”\n— Team motto",fontSize:23,color:"#29354a",bg:"#e9edf7",align:"left",padding:24,radius:12,width:100}
+};
+function makeBlock(type,values={}){return {id:"b"+(++seq),type,...structuredClone(defaults[type]||defaults.text),...values};}
+function snapshot(){return JSON.stringify({blocks,selected,pageTitle:$("pageTitle").value,pageBg:$("pageBg").value,pagePadding:$("pagePadding").value});}
+function pushHistory(){if(suppressHistory)return;const s=snapshot();if(history[historyIndex]===s)return;history=history.slice(0,historyIndex+1);history.push(s);if(history.length>80)history.shift();historyIndex=history.length-1;updateHistoryButtons();}
+function restore(s){suppressHistory=true;const d=JSON.parse(s);blocks=d.blocks||[];selected=d.selected||null;$("pageTitle").value=d.pageTitle||"My page";$("pageBg").value=d.pageBg||"#f5f7fb";$("pagePadding").value=d.pagePadding||30;seq=Math.max(seq,...blocks.map(b=>Number(b.id.slice(1))||0));render();suppressHistory=false;updateHistoryButtons();}
+function undo(){if(historyIndex>0){historyIndex--;restore(history[historyIndex]);}}
+function redo(){if(historyIndex<history.length-1){historyIndex++;restore(history[historyIndex]);}}
+function updateHistoryButtons(){$("undoBtn").disabled=historyIndex<=0;$("redoBtn").disabled=historyIndex>=history.length-1;}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function css(b){return "width:"+b.width+"%;text-align:"+b.align+";color:"+b.color+";background:"+b.bg+";padding:"+b.padding+"px;border-radius:"+b.radius+"px;font-size:"+b.fontSize+"px;";}
+function blockInner(b){
+ const lines=String(b.text||"").split("\n");
+ if(b.type==="heading")return "<h1 style='font-size:"+b.fontSize+"px;color:"+b.color+";text-align:"+b.align+";margin:0'>"+esc(b.text)+"</h1>";
+ if(b.type==="text")return "<p style='font-size:"+b.fontSize+"px;color:"+b.color+";text-align:"+b.align+";margin:0;white-space:pre-wrap'>"+esc(b.text)+"</p>";
+ if(b.type==="image")return b.src? "<img src='"+esc(b.src)+"' alt='"+esc(b.alt||"")+"' style='width:"+b.width+"%;max-height:620px;object-fit:cover;border-radius:"+b.radius+"px;margin:auto;display:block'>":"<div class='placeholder'>▧<br>"+esc(b.alt||"Choose an image in the properties panel")+"</div>";
+ if(b.type==="button")return "<div style='text-align:"+b.align+"'><span style='display:inline-block;background:"+b.bg+";color:"+b.color+";padding:"+b.padding+"px 20px;border-radius:"+b.radius+"px;font-weight:750'>"+esc(b.text)+"</span></div>";
+ if(b.type==="card")return "<div style='"+css(b)+";border:1px solid #e0e5ef;white-space:pre-wrap'><div style='font-size:"+Math.round(b.fontSize*1.35)+"px;font-weight:800;margin-bottom:8px'>"+esc(lines[0])+"</div>"+esc(lines.slice(1).join("\n"))+"</div>";
+ if(b.type==="stat")return "<div class='stat' style='"+css(b)+"'><span>"+esc(lines[0])+"</span><strong>"+esc(lines.slice(1).join(" "))+"</strong></div>";
+ if(b.type==="divider")return "<div class='divider' style='background:"+b.color+";margin:"+b.padding+"px 0'></div>";
+ if(b.type==="spacer")return "<div style='height:"+Math.max(8,Number(b.height)||48)+"px'></div>";
+ if(b.type==="badge")return "<div><span class='badge' style='background:"+b.bg+";color:"+b.color+";font-size:"+b.fontSize+"px;padding:"+Math.max(3,b.padding/2)+"px "+b.padding+"px;border-radius:"+b.radius+"px'>"+esc(b.text)+"</span></div>";
+ if(b.type==="quote")return "<blockquote style='"+css(b)+";font-weight:650;font-style:italic;white-space:pre-wrap;margin:0;border-left:4px solid "+b.color+"'>"+esc(b.text)+"</blockquote>";
+ return "<p>"+esc(b.text)+"</p>";
+}
+function render(){
+ canvas.style.background=$("pageBg").value;canvas.style.padding=$("pagePadding").value+"px";
+ canvas.classList.toggle("mobile",$("pageWidth").value==="mobile");canvas.classList.toggle("tablet",$("pageWidth").value==="tablet");
+ canvas.innerHTML="";
+ if(!blocks.length)canvas.innerHTML='<div class="empty"><strong>Your canvas is empty</strong>Add a block from the left, then make it yours.</div>';
+ blocks.forEach((b,i)=>{const el=document.createElement("section");el.className="block"+(b.id===selected?" selected":"");el.dataset.id=b.id;el.draggable=true;el.style.width=b.width+"%";el.innerHTML=blockInner(b);
+  if(b.type==="image"&&b.src)el.querySelector("img")?.addEventListener("click",()=>select(b.id));
+  el.addEventListener("click",e=>{e.stopPropagation();select(b.id);});
+  el.addEventListener("dragstart",e=>{el.classList.add("dragging");e.dataTransfer.setData("text/plain",b.id);e.dataTransfer.effectAllowed="move";});
+  el.addEventListener("dragend",()=>{el.classList.remove("dragging");canvas.querySelectorAll(".drop-target").forEach(x=>x.classList.remove("drop-target"));});
+  el.addEventListener("dragover",e=>{e.preventDefault();if(el.dataset.id!==selected)el.classList.add("drop-target");});
+  el.addEventListener("dragleave",()=>el.classList.remove("drop-target"));
+  el.addEventListener("drop",e=>{e.preventDefault();const from=e.dataTransfer.getData("text/plain"),to=b.id;if(!from||from===to)return;const fi=blocks.findIndex(x=>x.id===from),ti=blocks.findIndex(x=>x.id===to);if(fi<0||ti<0)return;const [moved]=blocks.splice(fi,1);blocks.splice(blocks.findIndex(x=>x.id===to)+(fi<ti?1:0),0,moved);pushHistory();render();});
+  canvas.appendChild(el);
+ });
+ $("blockCount").textContent="· "+blocks.length+" block"+(blocks.length===1?"":"s");
+ renderInspector();updateHistoryButtons();
+}
+canvas.addEventListener("click",()=>select(null));
+function select(id){selected=id;render();const el=canvas.querySelector('[data-id="'+id+'"]');if(el&&id)el.scrollIntoView({block:"nearest",behavior:"smooth"});}
+function updateProp(key,value){const b=blocks.find(x=>x.id===selected);if(!b)return;b[key]=value;pushHistory();render();}
+function field(label,key,value,type="text",extra={}){let id="prop-"+key;let input;if(type==="textarea")input='<textarea id="'+id+'">'+esc(value)+'</textarea>';else input='<input id="'+id+'" type="'+type+'" value="'+esc(value)+'" '+(extra.min!==undefined?'min="'+extra.min+'"':'')+' '+(extra.max!==undefined?'max="'+extra.max+'"':'')+' '+(extra.step!==undefined?'step="'+extra.step+'"':'')+'>';return '<div class="field"><label for="'+id+'">'+label+'</label>'+input+'</div>';}
+function renderInspector(){
+ const b=blocks.find(x=>x.id===selected);if(!b){inspector.innerHTML='<div class="inspector-empty">Select any block on the canvas to customise its content, colours, size and alignment.</div>';return;}
+ let html='<div class="muted" style="font-size:11px;margin-bottom:12px">'+esc(b.type.toUpperCase())+' BLOCK</div>';
+ if(b.type!=="divider"&&b.type!=="spacer")html+=field(b.type==="image"?"Alt text / image description":"Content","text",b.type==="image"?b.alt:b.text,"textarea");
+ if(b.type==="image"){html+=field("Image URL","src",b.src);html+='<div class="field"><button id="uploadImageBtn">Upload image…</button><div class="muted">Uploaded images are embedded in your draft/export.</div></div>';}
+ if(b.type==="spacer")html+=field("Height (px)","height",b.height,"number",{min:8,max:500});
+ if(b.type==="heading"||b.type==="text"||b.type==="card"||b.type==="stat"||b.type==="quote")html+=field("Font size (px)","fontSize",b.fontSize,"number",{min:8,max:100});
+ html+='<div class="two">'+field("Text colour","color",b.color,"color")+field("Background","bg",b.bg==="transparent"?"#ffffff":b.bg,"color")+'</div>';
+ html+='<div class="two">'+field("Width (%)","width",b.width,"number",{min:10,max:100})+field("Padding (px)","padding",b.padding,"number",{min:0,max:100})+'</div>';
+ html+='<div class="two">'+field("Corner radius","radius",b.radius,"number",{min:0,max:100})+'<div class="field"><label for="prop-align">Alignment</label><select id="prop-align"><option '+(b.align==="left"?"selected":"")+' value="left">Left</option><option '+(b.align==="center"?"selected":"")+' value="center">Center</option><option '+(b.align==="right"?"selected":"")+' value="right">Right</option></select></div></div>';
+ inspector.innerHTML=html;
+ ["text","src","alt","fontSize","color","bg","width","padding","radius","height"].forEach(key=>{const input=$("prop-"+key);if(!input)return;input.addEventListener(input.tagName==="TEXTAREA"?"input":"change",()=>{const actualKey=key==="text"&&b.type==="image"?"alt":key;updateProp(actualKey,["fontSize","width","padding","radius","height"].includes(key)?Number(input.value):input.value);});});
+ $("prop-align")?.addEventListener("change",e=>updateProp("align",e.target.value));
+ $("uploadImageBtn")?.addEventListener("click",()=>{$("imageFile").click();});
+}
+function add(type){const b=makeBlock(type);blocks.push(b);selected=b.id;pushHistory();render();}
+document.querySelectorAll("[data-add]").forEach(btn=>btn.addEventListener("click",()=>add(btn.dataset.add)));
+$("upBtn").onclick=()=>move(-1);$("downBtn").onclick=()=>move(1);
+function move(dir){const i=blocks.findIndex(b=>b.id===selected),j=i+dir;if(i<0||j<0||j>=blocks.length)return;[blocks[i],blocks[j]]=[blocks[j],blocks[i]];pushHistory();render();}
+$("duplicateBtn").onclick=()=>{const i=blocks.findIndex(b=>b.id===selected);if(i<0)return;const copy={...structuredClone(blocks[i]),id:"b"+(++seq)};blocks.splice(i+1,0,copy);selected=copy.id;pushHistory();render();};
+$("deleteBtn").onclick=()=>{const i=blocks.findIndex(b=>b.id===selected);if(i<0)return;blocks.splice(i,1);selected=null;pushHistory();render();};
+$("undoBtn").onclick=undo;$("redoBtn").onclick=redo;
+["pageTitle","pageBg","pagePadding","pageWidth"].forEach(id=>$(id).addEventListener("change",()=>{pushHistory();render();}));
+$("imageFile").addEventListener("change",e=>{const file=e.target.files?.[0];if(!file)return;const b=blocks.find(x=>x.id===selected);if(!b||b.type!=="image"){toast("Select an image block first.");return;}if(file.size>8*1024*1024){toast("Please use an image smaller than 8 MB.");return;}const reader=new FileReader();reader.onload=()=>{b.src=reader.result;b.alt=b.alt||file.name;pushHistory();render();toast("Image added.");};reader.readAsDataURL(file);e.target.value="";});
+$("saveBtn").onclick=()=>{try{localStorage.setItem("canvas-studio-draft",snapshot());toast("Draft saved in this browser.");}catch(e){toast("Draft too large for browser storage. Export JSON instead.");}};
+$("loadBtn").onclick=()=>{const s=localStorage.getItem("canvas-studio-draft");if(!s){toast("No saved draft in this browser.");return;}try{restore(s);pushHistory();toast("Draft loaded.");}catch(e){toast("Could not load that draft.");}};
+function download(name,data,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+$("exportJsonBtn").onclick=()=>download("canvas-studio-design.json",snapshot(),"application/json");
+$("importBtn").onclick=()=>$("jsonFile").click();
+$("jsonFile").addEventListener("change",e=>{const file=e.target.files?.[0];if(!file)return;const r=new FileReader();r.onload=()=>{try{restore(r.result);pushHistory();toast("Design imported.");}catch(err){toast("That JSON file isn't a valid Studio design.");}};r.readAsText(file);e.target.value="";});
+$("exportHtmlBtn").onclick=()=>{const title=esc($("pageTitle").value||"My page"),bg=$("pageBg").value,pad=$("pagePadding").value;const content=blocks.map(b=>'<section style="margin:0 0 14px;width:'+b.width+'%;text-align:'+b.align+';font-family:system-ui,-apple-system,sans-serif;box-sizing:border-box">'+exportBlock(b)+'</section>').join("\n");const html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><style>*{box-sizing:border-box}body{margin:0;background:#e9edf4;color:#182033;font-family:system-ui,-apple-system,sans-serif}.page{max-width:1000px;min-height:100vh;margin:0 auto;padding:'+pad+'px;background:'+bg+'}img{max-width:100%;height:auto} @media(max-width:600px){.page{padding:16px!important}section{width:100%!important}}</style></head><body><main class="page">'+content+'</main></body></html>';download((($("pageTitle").value||"my-page").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"my-page")+".html",html,"text/html");toast("Static HTML exported.");};
+function exportBlock(b){const lines=String(b.text||"").split("\n"),safe=esc;const style='color:'+b.color+';background:'+b.bg+';padding:'+b.padding+'px;border-radius:'+b.radius+'px;font-size:'+b.fontSize+'px;white-space:pre-wrap;';if(b.type==="heading")return '<h1 style="margin:0;'+style+'">'+safe(b.text)+'</h1>';if(b.type==="text")return '<p style="margin:0;'+style+'">'+safe(b.text)+'</p>';if(b.type==="image")return b.src?'<img src="'+safe(b.src)+'" alt="'+safe(b.alt)+'" style="width:100%;object-fit:cover;border-radius:'+b.radius+'px">':'<p>'+safe(b.alt||"Image placeholder")+'</p>';if(b.type==="button")return '<div><span style="display:inline-block;'+style+'font-weight:750">'+safe(b.text)+'</span></div>';if(b.type==="card")return '<div style="'+style+'border:1px solid #e0e5ef"><h2 style="margin:0 0 8px">'+safe(lines[0])+'</h2>'+safe(lines.slice(1).join("\n"))+'</div>';if(b.type==="stat")return '<div style="'+style+'border:1px solid #e0e5ef"><div>'+safe(lines[0])+'</div><strong style="font-size:28px">'+safe(lines.slice(1).join(" "))+'</strong></div>';if(b.type==="divider")return '<hr style="border:0;height:2px;background:'+b.color+';margin:'+b.padding+'px 0">';if(b.type==="spacer")return '<div style="height:'+Math.max(8,Number(b.height)||48)+'px"></div>';if(b.type==="badge")return '<span style="'+style+'display:inline-block;font-size:'+b.fontSize+'px;font-weight:750">'+safe(b.text)+'</span>';if(b.type==="quote")return '<blockquote style="'+style+'font-weight:650;font-style:italic;margin:0;border-left:4px solid '+b.color+'">'+safe(b.text)+'</blockquote>';return safe(b.text);}
+let toastTimer;function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200);}
+blocks=[makeBlock("badge",{text:"TEAM SPOTLIGHT"}),makeBlock("heading",{text:"Build something yours",fontSize:44}),makeBlock("text",{text:"This is a freeform canvas. Add blocks, move them around, drop in images, and style every element."}),makeBlock("image",{alt:"Upload your own team photo, logo or banner",src:""}),makeBlock("card",{text:"Your team. Your identity.\nCreate a page that feels like your team instead of another identical template."})];
+selected=blocks[1].id;render();pushHistory();
+})();
+</script>
+</body>
+</html>
