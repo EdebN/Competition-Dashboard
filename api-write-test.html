@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Community API Write Test · Competition Dashboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px; background: #080a0f; color: #f4f7fb;
+      font: 15px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(780px, 100%); margin: 28px auto; }
+    .eyebrow { color: #77879a; font-size: 11px; font-weight: 850; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 7px 0; font-size: clamp(26px, 4vw, 36px); letter-spacing: -.04em; }
+    p { color: #a7b2c0; }
+    .card { margin-top: 18px; padding: 21px; border: 1px solid #202833; border-radius: 15px; background: #10141b; }
+    .head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .num { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 9px; background: #1d2938; color: #d7e5f8; font-weight: 850; }
+    h2 { margin: 0; font-size: 17px; }
+    label { display: block; margin: 13px 0 6px; color: #a7b2c0; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+    input { width: 100%; padding: 12px; border: 1px solid #303b48; border-radius: 9px; background: #080a0f; color: #f4f7fb; font: inherit; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    button { padding: 11px 14px; border: 1px solid #303b48; border-radius: 9px; background: #1a2430; color: #f4f7fb; font: inherit; font-weight: 780; cursor: pointer; }
+    button.primary { background: #2563eb; border-color: #2563eb; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .status { margin-top: 13px; padding: 13px; border: 1px solid #202833; border-radius: 10px; background: #080a0f; color: #c8d2df; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 44px; }
+    .ok { color: #62e6a0; border-color: #23523a; }
+    .error { color: #ff818b; border-color: #60323a; }
+    .warning { margin-top: 13px; padding: 12px 14px; border-left: 3px solid #fbbf24; border-radius: 0 8px 8px 0; background: #1a170f; color: #e1d2a8; font-size: 13px; }
+    code { color: #c5d7ff; overflow-wrap: anywhere; }
+    small { display: block; margin-top: 12px; color: #7e8b9b; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Competition Dashboard / Developer tools</div>
+  <h1>Community API write test</h1>
+  <p>This hosted page checks API reads and tests an authorised update by briefly changing Team E, reading it back, and restoring the original settings. It does not access official fixtures or scores.</p>
+
+  <section class="card">
+    <div class="head"><span class="num">1</span><h2>Connect to the API</h2></div>
+    <label for="apiUrl">Apps Script Web app URL ending in /exec</label>
+    <input id="apiUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="url">
+    <div class="buttons">
+      <button id="healthBtn" class="primary">Check configuration</button>
+      <button id="settingsBtn">Read team settings</button>
+    </div>
+    <div id="readStatus" class="status" role="status" aria-live="polite">Paste your /exec URL to begin.</div>
+  </section>
+
+  <section class="card">
+    <div class="head"><span class="num">2</span><h2>Test an authorised write</h2></div>
+    <p>The test gives Team E a temporary unique name, verifies it through the public API, and restores all five team settings. The original names and colours are checked again at the end.</p>
+    <label for="adminToken">Admin token</label>
+    <input id="adminToken" type="password" placeholder="Enter your Script Property token" autocomplete="off" spellcheck="false">
+    <div class="buttons">
+      <button id="writeBtn" class="primary">Run write test + restore</button>
+    </div>
+    <div id="writeStatus" class="status" role="status" aria-live="polite">Nothing is written until you press the test button.</div>
+    <div class="warning">Run this when nobody else is editing team settings. It will update the Team Settings timestamp. The token is sent only to your Apps Script endpoint by this page, held temporarily in memory, and cleared when the test finishes. It is not saved to local storage.</div>
+    <small>The API rejects unknown operations and writes only the dedicated Team Settings tab.</small>
+  </section>
+</main>
+<script>
+(() => {
+  const apiInput = document.getElementById("apiUrl");
+  const tokenInput = document.getElementById("adminToken");
+  const readStatus = document.getElementById("readStatus");
+  const writeStatus = document.getElementById("writeStatus");
+  const controls = ["healthBtn", "settingsBtn", "writeBtn"].map(id => document.getElementById(id));
+
+  function show(node, message, kind = "") {
+    node.className = "status " + kind;
+    node.textContent = message;
+  }
+
+  function getUrl() {
+    const raw = apiInput.value.trim();
+    if (!raw) throw new Error("Paste your Apps Script /exec URL first.");
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.hostname !== "script.google.com" ||
+        !url.pathname.includes("/macros/s/") || !url.pathname.endsWith("/exec")) {
+      throw new Error("Use the HTTPS Apps Script Web app URL ending in /exec, not a URL with /edit.");
+    }
+    return url;
+  }
+
+  function setBusy(value) { controls.forEach(button => button.disabled = value); }
+
+  function readApi(action) {
+    return new Promise((resolve, reject) => {
+      let url;
+      try { url = getUrl(); } catch (error) { reject(error); return; }
+
+      const callback = "__communityApiRead_" + Math.random().toString(36).slice(2);
+      const script = document.createElement("script");
+      let finished = false;
+      const timer = setTimeout(() => finish(new Error("Timed out while reading " + action + ". The POST, if one was already sent, still needs read-back verification.")), 15000);
+
+      function finish(error, data) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        try { delete window[callback]; } catch {}
+        script.remove();
+        if (error) reject(error); else resolve(data);
+      }
+
+      window[callback] = data => finish(null, data);
+      url.searchParams.set("action", action);
+      url.searchParams.set("callback", callback);
+      url.searchParams.set("_cacheBust", String(Date.now()));
+      script.src = url.toString();
+      script.onerror = () => finish(new Error("The browser could not load the JSONP script for " + action + ". No POST is sent during this read. Check that this page is opened from GitHub Pages and that the /exec URL is exact."));
+      document.head.appendChild(script);
+    });
+  }
+
+  function normaliseTeams(data) {
+    if (!data || data.ok !== true || !Array.isArray(data.teams) || data.teams.length !== 5) {
+      throw new Error("Expected five team settings. API returned: " + JSON.stringify(data));
+    }
+    const teams = data.teams.map(team => ({
+      teamId: String(team.teamId || ""),
+      displayName: String(team.displayName || ""),
+      primaryColor: String(team.primaryColor || ""),
+      secondaryColor: String(team.secondaryColor || ""),
+      logoUrl: String(team.logoUrl || "")
+    }));
+    if (teams.map(team => team.teamId).join(",") !== "A,B,C,D,E") {
+      throw new Error("Unexpected team IDs/order. No write was attempted.");
+    }
+    return teams;
+  }
+
+  function sameSettings(a, b) {
+    const fields = ["teamId", "displayName", "primaryColor", "secondaryColor", "logoUrl"];
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length &&
+      a.every((item, index) => fields.every(field => item[field] === b[index][field]));
+  }
+
+  function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+  async function postSettings(token, teams) {
+    // text/plain avoids a CORS preflight. The response is opaque by design;
+    // correctness is established by reading back the saved values.
+    await fetch(getUrl().toString(), {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ action: "updateTeamSettings", adminToken: token, teams })
+    });
+  }
+
+  document.getElementById("healthBtn").addEventListener("click", async () => {
+    setBusy(true);
+    show(readStatus, "Checking API configuration…");
+    try {
+      const data = await readApi("health");
+      if (!data || data.ok !== true || data.service !== "competition-community-api") {
+        throw new Error("Unexpected response: " + JSON.stringify(data));
+      }
+      if (data.configured !== true) throw new Error("The API responds, but SPREADSHEET_ID or ADMIN_TOKEN is missing from Script Properties.");
+      show(readStatus, "CONFIGURATION OK\nService: " + data.service + "\nAPI version: " + data.apiVersion + "\nConfigured: true\nActions: " + data.actions.join(", "), "ok");
+    } catch (error) {
+      show(readStatus, "CONFIGURATION CHECK FAILED\n" + error.message, "error");
+    } finally { setBusy(false); }
+  });
+
+  document.getElementById("settingsBtn").addEventListener("click", async () => {
+    setBusy(true);
+    show(readStatus, "Reading team settings…");
+    try {
+      const teams = normaliseTeams(await readApi("getTeamSettings"));
+      show(readStatus, "READ OK · Five team records\n\n" + teams.map(team =>
+        "Team " + team.teamId + ": " + team.displayName +
+        (team.primaryColor ? " · " + team.primaryColor : "")
+      ).join("\n"), "ok");
+    } catch (error) {
+      show(readStatus, "READ FAILED\n" + error.message, "error");
+    } finally { setBusy(false); }
+  });
+
+  document.getElementById("writeBtn").addEventListener("click", async () => {
+    const token = tokenInput.value;
+    if (!token) {
+      show(writeStatus, "Enter your ADMIN_TOKEN from Apps Script → Project Settings → Script Properties.", "error");
+      tokenInput.focus();
+      return;
+    }
+
+    setBusy(true);
+    let original = null;
+    let testWasSent = false;
+    let testPassed = false;
+    let restorePassed = false;
+    let phase = "reading the original settings";
+    let failure = "";
+    show(writeStatus, "Step 1/4 · Reading the original settings…");
+
+    try {
+      original = normaliseTeams(await readApi("getTeamSettings"));
+      const marker = "E API Test " + String(Date.now()).slice(-8);
+      const temporary = original.map(team => ({
+        ...team,
+        displayName: team.teamId === "E" ? marker : team.displayName
+      }));
+
+      phase = "sending the temporary update";
+      show(writeStatus, "Step 2/4 · Sending a temporary Team E update…");
+      testWasSent = true;
+      await postSettings(token, temporary);
+
+      phase = "checking the saved temporary value";
+      show(writeStatus, "Step 3/4 · Reading back the temporary value…");
+      await delay(1200);
+      const observed = normaliseTeams(await readApi("getTeamSettings"));
+      testPassed = observed.find(team => team.teamId === "E")?.displayName === marker;
+      if (!testPassed) throw new Error("The read-back did not show the temporary Team E name. The token may be wrong or the server rejected the update.");
+      show(writeStatus, "Temporary update confirmed. Restoring the original settings…");
+    } catch (error) {
+      failure = "Failed while " + phase + ": " + (error && error.message ? error.message : String(error));
+    } finally {
+      if (original && testWasSent) {
+        try {
+          phase = "restoring original settings";
+          await postSettings(token, original);
+          await delay(1200);
+          const restored = normaliseTeams(await readApi("getTeamSettings"));
+          restorePassed = sameSettings(restored, original);
+          if (!restorePassed) failure += (failure ? "\n" : "") + "Restore was sent, but the saved settings do not exactly match the originals.";
+        } catch (error) {
+          failure += (failure ? "\n" : "") + "Could not verify restoration: " + (error && error.message ? error.message : String(error));
+        }
+      }
+      tokenInput.value = "";
+      setBusy(false);
+    }
+
+    if (testPassed && restorePassed && !failure) {
+      show(writeStatus, "SUCCESS · AUTHORISED WRITE VERIFIED\n\n1. Team E changed temporarily.\n2. The public read API confirmed the change.\n3. All five original settings were restored and verified.\n\nNo fixtures or scores were touched.", "ok");
+    } else {
+      show(writeStatus, "TEST DID NOT FULLY PASS\n" + (failure || "The write could not be verified.") +
+        (restorePassed ? "\n\nRestore verified: all original settings are back." :
+          original && testWasSent ? "\n\nRestore not verified. Click Read team settings above and inspect Team E before continuing." :
+          "\n\nNo write was sent because the test did not get past its initial read."), "error");
+    }
+  });
+})();
+</script>
+</body>
+</html>
