@@ -674,9 +674,26 @@ function glickoVolatility(phi, sigma, delta, variance) {
   return Math.exp(A / 2);
 }
 
-function marginFactor(scoreA, scoreB) {
+/*
+ * Logarithmic margin weight adapted from the FiveThirtyEight NBA Elo
+ * margin-of-victory correction. It is used as a weight on the Glicko-2
+ * match evidence, so larger margins provide more evidence without creating
+ * a separate underdog exception.
+ */
+function marginFactor(scoreA, scoreB, ratingA, ratingB) {
   if (scoreA === scoreB) return 1;
-  return Math.log(Math.abs(scoreA - scoreB) + 1);
+
+  const scoreMargin = Math.abs(scoreA - scoreB);
+  const winnerRating = scoreA > scoreB ? ratingA : ratingB;
+  const loserRating = scoreA > scoreB ? ratingB : ratingA;
+
+  return (
+    Math.log(scoreMargin + 1) *
+    (
+      2.2 /
+      (2.2 + 0.001 * (winnerRating - loserRating))
+    )
+  );
 }
 
 function actualScore(scoreA, scoreB) {
@@ -740,8 +757,10 @@ function updateGlickoPeriod(state, results) {
       result.opponent.phi
     );
 
-    sumVariance += g * g * expected * (1 - expected);
-    sumResidual += g * (result.score - expected);
+    const weight = result.weight ?? 1;
+
+    sumVariance += weight * g * g * expected * (1 - expected);
+    sumResidual += weight * g * (result.score - expected);
   });
 
   if (sumVariance <= 0) {
@@ -837,15 +856,25 @@ function calculateElo() {
         scoreB = Number(scoreB);
 
         const resultA = actualScore(scoreA, scoreB);
-        margin = marginFactor(scoreA, scoreB);
+        margin = marginFactor(
+          scoreA,
+          scoreB,
+          preA.rating,
+          preB.rating
+        );
 
+        // Treat the margin correction as the weight of this result's
+        // evidence in the Glicko-2 update. The same weight is used for
+        // both teams, preserving symmetric match treatment.
         resultsByTeam[game.home].push({
           opponent: preB,
-          score: resultA
+          score: resultA,
+          weight: margin
         });
         resultsByTeam[game.away].push({
           opponent: preA,
-          score: 1 - resultA
+          score: 1 - resultA,
+          weight: margin
         });
       }
 
