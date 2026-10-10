@@ -33,26 +33,33 @@ button,.link{display:flex;justify-content:center;align-items:center;width:100%;m
   </form>
   <div class="status" id="status" role="status" aria-live="polite"></div>
   <a class="link secondary" href="index.html">BACK TO COMPETITION DASHBOARD</a>
-  <p class="note">PIN sharing is currently a prototype. PINs generated in Admin are stored in that browser only, so they won't yet work on another device.</p>
+  <p class="note">PINs are saved in the private competition Google Sheet and can be used across devices.</p>
 </main>
 <script>
-const STORE_KEY = "team-editor-pins-v1";
-document.getElementById("accessForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const pin = document.getElementById("teamPin").value.trim();
-  const status = document.getElementById("status");
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {}; } catch {}
-  const match = Object.entries(saved).find(([teamId, entry]) =>
-    ["A","B","C","D","E"].includes(teamId) && String(entry?.pin || "") === pin
-  );
-  if (!/^\d{6}$/.test(pin) || !match) {
-    status.textContent = "That PIN wasn't found in this browser. Check it or ask the admin to generate a new one.";
-    return;
-  }
-  const [teamId] = match;
-  sessionStorage.setItem("team-editor-authorized-team", teamId);
-  location.href = "studio.html?team=" + encodeURIComponent(teamId);
+const API="https://script.google.com/macros/s/AKfycbxAzNw4qxdAI_Ky0SRgb28FBzcmpnuWrwe9ItNEUfI4WYpNz2XEEozmQ6IEdVTGHhke/exec";
+document.getElementById("accessForm").addEventListener("submit",event=>{
+ event.preventDefault();
+ const pin=document.getElementById("teamPin").value.trim();
+ const status=document.getElementById("status");
+ if(!/^\d{6}$/.test(pin)){status.textContent="Enter the six-digit PIN.";return;}
+ const callback="teamPinCheck_"+Date.now();
+ const script=document.createElement("script");
+ const url=new URL(API);
+ window[callback]=result=>{
+  delete window[callback];script.remove();
+  if(result&&result.ok&&["A","B","C","D","E"].includes(result.teamId)){
+   sessionStorage.setItem("team-editor-authorized-team",result.teamId);
+   location.href="studio.html?team="+encodeURIComponent(result.teamId);
+  }else status.textContent="PIN not recognised. Check it or ask the admin to reset it.";
+ };
+ url.searchParams.set("action","verifyTeamEditorPin");
+ url.searchParams.set("pin",pin);
+ url.searchParams.set("callback",callback);
+ url.searchParams.set("_cacheBust",Date.now());
+ script.src=url.toString();
+ script.onerror=()=>{delete window[callback];script.remove();status.textContent="Could not contact the Team Editor service. The Apps Script update may not be deployed yet.";};
+ status.textContent="Checking PIN…";
+ document.head.appendChild(script);
 });
 </script>
 </body>
