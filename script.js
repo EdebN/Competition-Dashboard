@@ -2908,7 +2908,9 @@ function renderAdminPage() {
     );
 
 }
-function unlockAdmin() {
+const ADMIN_TOKEN_SHA256 = "e6ef5b690136ed115a1f22323c86ba0316ffbf62118c83ae99cd192eff845d36";
+
+async function unlockAdmin() {
   const input = document.getElementById("adminTokenInput");
   const error = document.getElementById("adminError");
 
@@ -2918,9 +2920,34 @@ function unlockAdmin() {
     return;
   }
 
-  adminToken = input.value.trim();
-  adminUnlocked = true;
-  renderAdminPage();
+  if (error) error.textContent = "Checking token…";
+
+  try {
+    const token = input.value.trim();
+    const bytes = new TextEncoder().encode(token);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const hash = Array.from(new Uint8Array(digest))
+      .map(byte => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+    if (hash !== ADMIN_TOKEN_SHA256) {
+      adminToken = "";
+      adminUnlocked = false;
+      if (error) error.textContent = "Invalid admin token.";
+      input.focus();
+      input.select();
+      return;
+    }
+
+    // Keep the original token in memory for authenticated backend writes.
+    adminToken = token;
+    adminUnlocked = true;
+    renderAdminPage();
+  } catch (err) {
+    if (error) {
+      error.textContent = "Could not verify the token in this browser. Try reloading the page.";
+    }
+  }
 }
 
 /* =========================================================
