@@ -2818,21 +2818,27 @@ function renderAdminPage() {
         '<button type="button" class="page-access-copy" data-team="' + teamId + '" disabled>COPY</button></div></article>';
     }).join("");
   }
-  try {
-    const savedPins = JSON.parse(localStorage.getItem("team-editor-pins-v1") || "{}") || {};
-    Object.entries(savedPins).forEach(([teamId, entry]) => {
-      if (!["A", "B", "C", "D", "E"].includes(teamId) || !/^\d{6}$/.test(String(entry?.pin || ""))) return;
+  const pinStatus = document.getElementById("pageAccessStatus");
+  readCommunityApi("getTeamEditorPinStatus").then(response => {
+    if (!response || response.ok !== true || !Array.isArray(response.teams)) throw new Error(response?.error || "PIN status unavailable.");
+    response.teams.forEach(entry => {
+      const teamId = String(entry.teamId || "");
+      if (!["A", "B", "C", "D", "E"].includes(teamId)) return;
       const pinDisplay = document.getElementById("pageAccessPin" + teamId);
       const card = pinDisplay?.closest(".page-access-team");
       const badge = card?.querySelector(".page-access-status");
       const button = card?.querySelector(".page-access-generate");
-      const copyButton = card?.querySelector(".page-access-copy");
-      if (pinDisplay) pinDisplay.textContent = entry.pin;
-      if (badge) { badge.textContent = "PIN READY"; badge.classList.add("is-demo"); }
-      if (button) button.textContent = "REGENERATE PIN";
-      if (copyButton) copyButton.disabled = false;
+      if (entry.configured) {
+        if (pinDisplay) pinDisplay.textContent = "••••••";
+        if (badge) { badge.textContent = "PIN SET"; badge.classList.add("is-demo"); }
+        if (button) button.textContent = "REGENERATE PIN";
+      }
     });
-  } catch {}
+    if (pinStatus) pinStatus.textContent = "PIN status loaded from the shared Google Sheet. Existing PINs are hidden; regenerate one if it has been lost.";
+  }).catch(error => {
+    if (pinStatus) pinStatus.textContent = "Could not load PIN status. Deploy the updated Apps Script backend and try again.";
+    console.error("Could not load Team Editor PIN status:", error);
+  });
 
   /* ─────────────────────────────
      GAMES PER TEAM
