@@ -43,7 +43,7 @@ function doGet(e) {
           properties.getProperty("SPREADSHEET_ID") &&
           properties.getProperty("ADMIN_TOKEN")
         ),
-        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin", "getTeamPageDesign", "saveTeamPageDesign", "getPublishedTeamPage", "publishTeamPage", "submitFeatureRequest"]
+        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin", "getTeamPageDesign", "saveTeamPageDesign", "getPublishedTeamPage", "publishTeamPage", "revertTeamPage", "submitFeatureRequest"]
       };
     } else if (action === "getTeamSettings") {
       result = {
@@ -118,7 +118,7 @@ function doPost(e) {
     });
   }
 
-  if (!["updateTeamSettings", "updateTeamEditorPin", "saveTeamPageDesign", "publishTeamPage", "submitFeatureRequest"].includes(body.action)) {
+  if (!["updateTeamSettings", "updateTeamEditorPin", "saveTeamPageDesign", "publishTeamPage", "revertTeamPage", "submitFeatureRequest"].includes(body.action)) {
     return jsonResponse_({
       ok: false,
       service: SERVICE_NAME,
@@ -129,6 +129,7 @@ function doPost(e) {
   if (body.action === "submitFeatureRequest") return submitFeatureRequest_(body);
   if (body.action === "saveTeamPageDesign") return saveTeamPageDesign_(body);
   if (body.action === "publishTeamPage") return publishTeamPage_(body);
+  if (body.action === "revertTeamPage") return revertTeamPage_(body);
 
   const expectedToken = PropertiesService
     .getScriptProperties()
@@ -434,6 +435,28 @@ function publishTeamPage_(body) {
     return jsonResponse_({ ok: true, action: "publishTeamPage", published: true, teamId: teamId });
   } catch (e) {
     console.error(e); return jsonResponse_({ ok: false, error: "Could not publish the team page." });
+  } finally { lock.releaseLock(); }
+}
+
+function revertTeamPage_(body) {
+  const teamId = String(body.teamId || "").trim().toUpperCase();
+  if (!TEAM_IDS.includes(teamId) || getSessionTeam_(body.sessionToken) !== teamId)
+    return jsonResponse_({ ok: false, error: "Studio session expired. Sign in again." });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return jsonResponse_({ ok: false, error: "Service busy. Try again." });
+  try {
+    const sheet = getPublishedTeamPageSheet_(), last = sheet.getLastRow();
+    if (last < 2) return jsonResponse_({ ok: true, action: "revertTeamPage", reverted: true, teamId: teamId });
+    const rows = sheet.getRange(2, 1, last - 1, 3).getDisplayValues();
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (String(rows[i][0]).trim().toUpperCase() === teamId) {
+        sheet.deleteRow(i + 2);
+        break;
+      }
+    }
+    return jsonResponse_({ ok: true, action: "revertTeamPage", reverted: true, teamId: teamId });
+  } catch (e) {
+    console.error(e); return jsonResponse_({ ok: false, error: "Could not restore the default team page." });
   } finally { lock.releaseLock(); }
 }
 
