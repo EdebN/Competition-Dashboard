@@ -2,6 +2,8 @@ const SERVICE_NAME = "competition-community-api";
 const API_VERSION = 1;
 
 const TEAM_SETTINGS_TAB = "Team Settings";
+const TEAM_PAGE_DESIGNS_TAB = "Team Page Designs";
+const FEATURE_REQUESTS_TAB = "Feature Requests";
 const TEAM_EDITOR_PINS_TAB = "Team Editor PINs";
 const TEAM_EDITOR_PIN_HEADERS = ["Team ID", "PIN", "Updated At"];
 const TEAM_IDS = ["A", "B", "C", "D", "E"];
@@ -40,7 +42,7 @@ function doGet(e) {
           properties.getProperty("SPREADSHEET_ID") &&
           properties.getProperty("ADMIN_TOKEN")
         ),
-        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin"]
+        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin", "getTeamPageDesign", "saveTeamPageDesign", "submitFeatureRequest"]
       };
     } else if (action === "getTeamSettings") {
       result = {
@@ -50,6 +52,11 @@ function doGet(e) {
         action: action,
         teams: readTeamSettings_()
       };
+    } else if (action === "getTeamPageDesign") {
+      const teamId = String(params.teamId || "").trim().toUpperCase();
+      const sessionTeam = getSessionTeam_(params.sessionToken);
+      if (!sessionTeam || sessionTeam !== teamId) result = { ok: false, error: "Studio session expired. Sign in again." };
+      else result = { ok: true, action: action, teamId: teamId, design: readTeamPageDesign_(teamId) };
     } else if (action === "getTeamEditorPinStatus") {
       result = {
         ok: true,
@@ -106,13 +113,16 @@ function doPost(e) {
     });
   }
 
-  if (!["updateTeamSettings", "updateTeamEditorPin"].includes(body.action)) {
+  if (!["updateTeamSettings", "updateTeamEditorPin", "saveTeamPageDesign", "submitFeatureRequest"].includes(body.action)) {
     return jsonResponse_({
       ok: false,
       service: SERVICE_NAME,
       error: "Operation not allowed"
     });
   }
+
+  if (body.action === "submitFeatureRequest") return submitFeatureRequest_(body);
+  if (body.action === "saveTeamPageDesign") return saveTeamPageDesign_(body);
 
   const expectedToken = PropertiesService
     .getScriptProperties()
@@ -299,11 +309,101 @@ function verifyTeamEditorPin_(input) {
     const savedPin = String(rows[i][1] || "").trim();
     if (TEAM_IDS.includes(teamId) && savedPin === pin) {
       cache.remove(attemptsKey);
-      return { ok: true, service: SERVICE_NAME, apiVersion: API_VERSION, action: "verifyTeamEditorPin", teamId: teamId };
+      const sessionToken = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+      cache.put("studioSession:" + sessionToken, teamId, 21600);
+      return { ok: true, service: SERVICE_NAME, apiVersion: API_VERSION, action: "verifyTeamEditorPin", teamId: teamId, sessionToken: sessionToken };
     }
   }
   cache.put(attemptsKey, String(failures + 1), 60);
   return { ok: false, service: SERVICE_NAME, apiVersion: API_VERSION, error: "Invalid PIN." };
+}
+
+
+function getSessionTeam_(token) {
+  const value = String(token || "");
+  if (!/^[a-f0-9]{64}$/.test(value)) return "";
+  return String(CacheService.getScriptCache().get("studioSession:" + value) || "");
+}
+function getTeamPageDesignSheet_() {
+  const id = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  if (!id) throw new Error("Missing SPREADSHEET_ID");
+  const ss = SpreadsheetApp.openById(id);
+  let sheet = ss.getSheetByName(TEAM_PAGE_DESIGNS_TAB);
+  const headers = ["Team ID", "Design JSON", "Updated At"];
+  if (!sheet) sheet = ss.insertSheet(TEAM_PAGE_DESIGNS_TAB);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  } else {
+    const actual = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
+    if (!headers.every((v, i) => actual[i] === v)) throw new Error("Unexpected Team Page Designs headers.");
+  }
+  return sheet;
+}
+function readTeamPageDesign_(teamId) {
+  const sheet = getTeamPageDesignSheet_(), last = sheet.getLastRow();
+  if (last < 2) return null;
+  const rows = sheet.getRange(2, 1, last - 1, 3).getValues();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][0]).toUpperCase() === teamId) {
+      try { return JSON.parse(String(rows[i][1] || "")); } catch (e) { return null; }
+    }
+  }
+  return null;
+}
+function saveTeamPageDesign_(body) {
+  const teamId = String(body.teamId || "").trim().toUpperCase();
+  if (!TEAM_IDS.includes(teamId) || getSessionTeam_(body.sessionToken) !== teamId)
+    return jsonResponse_({ ok: false, error: "Studio session expired. Sign in again." });
+  let design;
+  try { design = typeof body.design === "string" ? JSON.parse(body.design) : body.design; }
+  catch (e) { return jsonResponse_({ ok: false, error: "Invalid design data." }); }
+  if (!design || !Array.isArray(design.blocks) || design.blocks.length > 100)
+    return jsonResponse_({ ok: false, error: "Design must contain at most 100 blocks." });
+  const serialized = JSON.stringify(design);
+  if (serialized.length > 45000)
+    return jsonResponse_({ ok: false, error: "Design is too large for shared storage. Use hosted image URLs instead of embedded uploads." });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return jsonResponse_({ ok: false, error: "Service busy. Try again." });
+  try {
+    const sheet = getTeamPageDesignSheet_(), last = sheet.getLastRow();
+    const rows = last >= 2 ? sheet.getRange(2, 1, last - 1, 3).getDisplayValues() : [];
+    let rowNumber = 0;
+    rows.forEach((row, i) => { if (String(row[0]).toUpperCase() === teamId) rowNumber = i + 2; });
+    if (!rowNumber) rowNumber = Math.max(2, last + 1);
+    sheet.getRange(rowNumber, 1, 1, 3).setValues([[teamId, serialized, new Date()]]);
+    return jsonResponse_({ ok: true, action: "saveTeamPageDesign", saved: true, teamId: teamId });
+  } catch (e) {
+    console.error(e); return jsonResponse_({ ok: false, error: "Could not save the shared design." });
+  } finally { lock.releaseLock(); }
+}
+function submitFeatureRequest_(body) {
+  const request = String(body.request || "").trim();
+  const teamId = String(body.teamId || "").trim().toUpperCase();
+  if (request.length < 8 || request.length > 1500) return jsonResponse_({ ok: false, error: "Request must be 8 to 1500 characters." });
+  if (teamId && !TEAM_IDS.includes(teamId)) return jsonResponse_({ ok: false, error: "Invalid team ID." });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return jsonResponse_({ ok: false, error: "Service busy. Try again." });
+  try {
+    const id = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+    if (!id) throw new Error("Missing SPREADSHEET_ID");
+    const ss = SpreadsheetApp.openById(id);
+    let sheet = ss.getSheetByName(FEATURE_REQUESTS_TAB);
+    const headers = ["Submitted At", "Team ID", "Request", "Page"];
+    if (!sheet) sheet = ss.insertSheet(FEATURE_REQUESTS_TAB);
+    if (sheet.getLastRow() === 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
+      sheet.setFrozenRows(1);
+    } else {
+      const actual = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
+      if (!headers.every((v, i) => actual[i] === v)) throw new Error("Unexpected Feature Requests headers.");
+    }
+    if (sheet.getLastRow() > 5000) return jsonResponse_({ ok: false, error: "Request inbox is full. Please try later." });
+    sheet.appendRow([new Date(), teamId, request, String(body.page || "Team Page Studio").slice(0, 100)]);
+    return jsonResponse_({ ok: true, action: "submitFeatureRequest", saved: true });
+  } catch (e) {
+    console.error(e); return jsonResponse_({ ok: false, error: "Could not save the feature request." });
+  } finally { lock.releaseLock(); }
 }
 
 function getTeamSettingsSheet_() {
