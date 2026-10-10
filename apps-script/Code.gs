@@ -40,7 +40,7 @@ function doGet(e) {
           properties.getProperty("SPREADSHEET_ID") &&
           properties.getProperty("ADMIN_TOKEN")
         ),
-        actions: ["health", "getTeamSettings"]
+        actions: ["health", "getTeamSettings", "getTeamEditorPinStatus", "verifyTeamEditorPin", "updateTeamEditorPin"]
       };
     } else if (action === "getTeamSettings") {
       result = {
@@ -50,6 +50,16 @@ function doGet(e) {
         action: action,
         teams: readTeamSettings_()
       };
+    } else if (action === "getTeamEditorPinStatus") {
+      result = {
+        ok: true,
+        service: SERVICE_NAME,
+        apiVersion: API_VERSION,
+        action: action,
+        teams: readTeamEditorPinStatus_()
+      };
+    } else if (action === "verifyTeamEditorPin") {
+      result = verifyTeamEditorPin_(params.pin);
     } else {
       result = {
         ok: false,
