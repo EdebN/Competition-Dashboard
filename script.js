@@ -2776,6 +2776,9 @@ function renderAdminPage() {
         </button>
 
 
+        <div class="admin-portal-entry"><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
+
+
       </div>
 
     </section>
@@ -2786,7 +2789,7 @@ function renderAdminPage() {
       <div class="page-access-heading"><div><h2>Page Editor Access</h2><p class="page-access-intro">Give each team’s social manager access to their own page. They can build the look, write updates and manage photos without touching competition settings.</p></div><div class="page-access-mark" aria-hidden="true">✦</div></div>
       <div class="page-access-notice"><span class="page-access-notice-dot"></span><div><strong>Editor access preview</strong><br>These are temporary demo PINs only. They are not saved and do not unlock editing yet.</div></div>
       <div class="page-access-grid" id="pageAccessTeams"></div>
-      <div class="page-access-footer"><div><strong>Team editors need their own entry point</strong><p>Share the public Team Editor page with social managers.</p></div><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
+      
       <div id="pageAccessStatus" class="admin-info" role="status" aria-live="polite">This is the first UI pass. Demo PINs exist only in this page until we connect real access.</div>
     </section>
 
