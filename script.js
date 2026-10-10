@@ -192,6 +192,7 @@ function updateDashboardTeamNames() {
   calculate();
   renderGames();
   renderFinalsPage();
+  if (typeof renderMatchCentre === "function") renderMatchCentre();
 
   const status = document.getElementById("teamNamesStatus");
   if (status && communitySettingsLoaded) {
@@ -1275,8 +1276,12 @@ gamesToDisplay.forEach(game => {
         "div"
       );
 
-    row.className =
-      "game";
+    row.className = "game match-clickable";
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", "Open details for game " + game.id);
+    row.addEventListener("click", () => { if (typeof openMatchDetail === "function") openMatchDetail(game.id); });
+    row.addEventListener("keydown", event => { if ((event.key === "Enter" || event.key === " ") && typeof openMatchDetail === "function") { event.preventDefault(); openMatchDetail(game.id); } });
 
     row.dataset.gameId =
       game.id;
@@ -1450,6 +1455,7 @@ number.textContent =
   );
 
   updateGameResults();
+  if (typeof renderMatchCentre === "function") renderMatchCentre();
 
 }
 
@@ -3134,6 +3140,7 @@ updateTeamNavNames();
 
   if (
     pageName !== "home" &&
+    pageName !== "matches" &&
     pageName !== "finals" &&
     pageName !== "admin"
   ) {
@@ -4256,6 +4263,7 @@ game.referee =
     calculate();
     renderGames();
     renderFinalsPage();
+    if (typeof renderMatchCentre === "function") renderMatchCentre();
 
     showSheetStatus(true);
 
@@ -4273,6 +4281,7 @@ game.referee =
     calculate();
     renderGames();
     renderFinalsPage();
+    if (typeof renderMatchCentre === "function") renderMatchCentre();
 
     showSheetStatus(false);
 
