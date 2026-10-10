@@ -2786,7 +2786,7 @@ function renderAdminPage() {
       <div class="page-access-heading"><div><h2>Page Editor Access</h2><p class="page-access-intro">Give each team’s social manager access to their own page. They can build the look, write updates and manage photos without touching competition settings.</p></div><div class="page-access-mark" aria-hidden="true">✦</div></div>
       <div class="page-access-notice"><span class="page-access-notice-dot"></span><div><strong>Editor access preview</strong><br>These are temporary demo PINs only. They are not saved and do not unlock editing yet.</div></div>
       <div class="page-access-grid" id="pageAccessTeams"></div>
-      <div class="page-access-footer"><div><strong>Ready for the creative bit?</strong><p>Canvas Studio is where the team pages will be designed.</p></div><a class="admin-button page-access-studio" href="studio.html">OPEN CANVAS STUDIO ↗</a></div>
+      <div class="page-access-footer"><div><strong>Team editors need their own entry point</strong><p>Share the public Team Editor page with social managers.</p></div><a class="admin-button page-access-studio" href="team-editor.html">OPEN TEAM EDITOR PORTAL ↗</a></div>
       <div id="pageAccessStatus" class="admin-info" role="status" aria-live="polite">This is the first UI pass. Demo PINs exist only in this page until we connect real access.</div>
     </section>
 
@@ -2807,6 +2807,22 @@ function renderAdminPage() {
         '<button type="button" class="page-access-copy" data-team="' + teamId + '" disabled>COPY</button></div></article>';
     }).join("");
   }
+  try {
+    const savedPins = JSON.parse(localStorage.getItem("team-editor-pins-v1") || "{}") || {};
+    Object.entries(savedPins).forEach(([teamId, entry]) => {
+      if (!["A", "B", "C", "D", "E"].includes(teamId) || !/^\\d{6}$/.test(String(entry?.pin || ""))) return;
+      const pinDisplay = document.getElementById("pageAccessPin" + teamId);
+      const card = pinDisplay?.closest(".page-access-team");
+      const badge = card?.querySelector(".page-access-status");
+      const button = card?.querySelector(".page-access-generate");
+      const copyButton = card?.querySelector(".page-access-copy");
+      if (pinDisplay) pinDisplay.textContent = entry.pin;
+      if (badge) { badge.textContent = "PIN READY"; badge.classList.add("is-demo"); }
+      if (button) button.textContent = "REGENERATE PIN";
+      if (copyButton) copyButton.disabled = false;
+    });
+  } catch {}
+
   /* ─────────────────────────────
      GAMES PER TEAM
   ───────────────────────────── */
@@ -2936,14 +2952,19 @@ function renderAdminPage() {
       const teamId = button.dataset.team;
       const pin = String(Math.floor(100000 + Math.random() * 900000));
       const pinDisplay = document.getElementById("pageAccessPin" + teamId);
+      const pinStoreKey = "team-editor-pins-v1";
+      let savedPins = {};
+      try { savedPins = JSON.parse(localStorage.getItem(pinStoreKey) || "{}") || {}; } catch {}
+      savedPins[teamId] = { pin, updatedAt: new Date().toISOString() };
+      try { localStorage.setItem(pinStoreKey, JSON.stringify(savedPins)); } catch {}
       const copyButton = document.querySelector('.page-access-copy[data-team="' + teamId + '"]');
       const status = document.getElementById("pageAccessStatus");
       if (pinDisplay) pinDisplay.textContent = pin;
       if (copyButton) { copyButton.disabled = false; copyButton.textContent = "COPY"; }
-      button.textContent = "REGENERATE DEMO PIN";
+      button.textContent = "REGENERATE PIN";
       const badge = button.closest(".page-access-team")?.querySelector(".page-access-status");
-      if (badge) { badge.textContent = "DEMO ONLY"; badge.classList.add("is-demo"); }
-      if (status) status.textContent = "Demo PIN created for Team " + teamId + ". It is temporary and does not grant access yet."; 
+      if (badge) { badge.textContent = "PIN READY"; badge.classList.add("is-demo"); }
+      if (status) status.textContent = "PIN created for Team " + teamId + ". It works on this browser only until shared PIN storage is connected."; 
     });
   });
 
@@ -2956,7 +2977,7 @@ function renderAdminPage() {
       try {
         await navigator.clipboard.writeText(pinDisplay.textContent.trim());
         button.textContent = "COPIED";
-        if (status) status.textContent = "Demo PIN copied. It still does not grant access."; 
+        if (status) status.textContent = "PIN copied. Remember: this prototype stores PINs in this browser only."; 
       } catch (error) {
         if (status) status.textContent = "Clipboard access was blocked. Select the PIN and copy it manually."; 
       }
